@@ -1,0 +1,13 @@
+{
+  "clients": [
+    {
+      "id": "vam",
+      "name": "Value Added Moving",
+      "defaults": {
+        "Copywriter": "Nate",
+        "Conversion Objective": "Lead",
+        "Ad Platform": "Meta"
+      }
+    }
+  ]
+}
