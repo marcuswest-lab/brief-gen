@@ -211,6 +211,52 @@ html, body {
   font-family: inherit;
 }
 
+.multiselect {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  min-height: 36px;
+}
+
+.multiselect-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: #fafafa;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.multiselect-opt:hover {
+  background: #f0f0f1;
+  color: var(--text);
+}
+
+.multiselect-opt input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.multiselect-opt:has(input:checked) {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
 /* Multi-line / important fields span the whole row */
 .field:has(textarea) {
   grid-column: 1 / -1;

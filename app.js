@@ -409,6 +409,31 @@ function renderField(def, value, onChange) {
         return opt;
       }),
     );
+  } else if (def.kind === 'multiselect') {
+    // Stored value is a comma-joined string for backward compat with text fields
+    // and so it serializes cleanly into the .docx cell.
+    const opts = DROPDOWN_OPTIONS[def.options] || [];
+    const selected = new Set(
+      (value || '').split(',').map(s => s.trim()).filter(Boolean)
+    );
+    input = el('div', { id, class: 'multiselect' });
+    for (const o of opts) {
+      const cbId = `${id}-${o.replace(/[^a-z0-9]+/gi, '-')}`;
+      const cb = el('input', {
+        type: 'checkbox',
+        id: cbId,
+        value: o,
+        onchange: (e) => {
+          if (e.target.checked) selected.add(o);
+          else selected.delete(o);
+          // Preserve original option order
+          const ordered = opts.filter(x => selected.has(x));
+          onChange(ordered.join(', '));
+        },
+      });
+      if (selected.has(o)) cb.setAttribute('checked', '');
+      input.appendChild(el('label', { class: 'multiselect-opt', for: cbId }, cb, el('span', {}, o)));
+    }
   } else if (def.multiline) {
     input = el('textarea', {
       id,
