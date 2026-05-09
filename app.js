@@ -18,11 +18,13 @@ const state = {
   // Presets are global per client (not per brief type) — only fields present in
   // the current brief's overview are applied; unrelated fields are ignored.
   presets: {},
-  // Form data is keyed by briefType so switching tabs preserves work
+  // Form data is keyed by briefType so switching tabs preserves work.
+  // `activePresetId` is the preset that was last applied for this brief type +
+  // current client. Cleared when the user picks the placeholder option.
   forms: {
-    static: { overview: {}, creatives: [{}] },
-    video:  { overview: {}, creatives: [{}] },
-    copy:   { overview: {}, creatives: [{}] },
+    static: { overview: {}, creatives: [{}], activePresetId: null },
+    video:  { overview: {}, creatives: [{}], activePresetId: null },
+    copy:   { overview: {}, creatives: [{}], activePresetId: null },
   },
 };
 
@@ -53,6 +55,10 @@ function loadState() {
         // Make sure each form has at least one creative
         if (!state.forms[k].creatives || state.forms[k].creatives.length === 0) {
           state.forms[k].creatives = [{}];
+        }
+        // Backfill activePresetId for old saved state
+        if (state.forms[k].activePresetId === undefined) {
+          state.forms[k].activePresetId = null;
         }
       }
     }
@@ -197,6 +203,14 @@ function renderClientPicker() {
 
   // -- Preset row --
   const presets = getPresetsForCurrentClient();
+  const activePresetId = state.forms[state.briefType].activePresetId;
+  // If the previously-active preset no longer exists (e.g. user switched
+  // clients or deleted it), clear it so the placeholder shows.
+  const activeStillValid = activePresetId && presets.some(p => p.id === activePresetId);
+  if (activePresetId && !activeStillValid) {
+    state.forms[state.briefType].activePresetId = null;
+  }
+
   const presetRow = el('div', { class: 'picker-row' });
   presetRow.appendChild(el('label', { for: 'preset-select' }, 'Preset'));
 
@@ -204,15 +218,21 @@ function renderClientPicker() {
     id: 'preset-select',
     onchange: (e) => {
       const id = e.target.value;
-      if (!id) return;
+      if (!id) {
+        // User picked the placeholder — clear the active preset (does NOT
+        // unfill any fields, just stops claiming a preset is active).
+        state.forms[state.briefType].activePresetId = null;
+        saveState();
+        return;
+      }
       handleApplyPreset(id);
-      // Reset the select to placeholder so re-applying the same preset works
-      e.target.value = '';
     },
   });
-  presetSelect.appendChild(el('option', { value: '' }, presets.length === 0 ? '— no presets —' : '— apply preset —'));
+  presetSelect.appendChild(el('option', { value: '' }, presets.length === 0 ? '— no presets —' : '— none —'));
   for (const p of presets) {
-    presetSelect.appendChild(el('option', { value: p.id }, p.name));
+    const opt = el('option', { value: p.id }, p.name);
+    if (p.id === activePresetId && activeStillValid) opt.setAttribute('selected', '');
+    presetSelect.appendChild(opt);
   }
   if (presets.length === 0) presetSelect.setAttribute('disabled', '');
   presetRow.appendChild(presetSelect);
@@ -313,7 +333,11 @@ function handleApplyPreset(presetId) {
       wouldOverwrite.map(f => `• ${f}`).join('\n') +
       `\n\nContinue?`
     );
-    if (!ok) return;
+    if (!ok) {
+      // Cancel — re-render so the dropdown reflects the still-active preset
+      renderClientPicker();
+      return;
+    }
   }
 
   // Apply: set every preset field that's relevant to this brief type
@@ -324,7 +348,11 @@ function handleApplyPreset(presetId) {
     applied++;
   }
 
+  // Mark this preset as the active selection for the current brief type
+  state.forms[state.briefType].activePresetId = preset.id;
+
   saveState();
+  renderClientPicker();
   renderForm();
 
   const status = document.getElementById('status');
@@ -338,42 +366,146 @@ function handleApplyPreset(presetId) {
 function handleManagePresets() {
   const client = getCurrentClient();
   if (!client) return;
-  const presets = state.presets[client.id] || [];
-  if (presets.length === 0) return;
+  if (!state.presets[client.id]) state.presets[client.id] = [];
+  openPresetManager(client);
+}
 
-  const lines = presets.map((p, i) => `${i + 1}. ${p.name} (${Object.keys(p.values).length} fields)`).join('\n');
-  const choice = prompt(
-    `Presets for ${client.name}:\n\n${lines}\n\n` +
-    `To DELETE a preset, type its number.\n` +
-    `To RENAME, type "rename N" (e.g. "rename 2").\n` +
-    `Cancel to do nothing.`
+// -------- Preset manager modal --------
+
+function openPresetManager(client) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  const renderList = () => {
+    listEl.innerHTML = '';
+    const presets = state.presets[client.id] || [];
+
+    if (presets.length === 0) {
+      listEl.appendChild(el('div', { class: 'pm-empty' },
+        'No presets yet. Use "+ Save preset" to create one from the current overview fields.'
+      ));
+      return;
+    }
+
+    for (const preset of presets) {
+      const fieldList = Object.keys(preset.values);
+      const item = el('div', { class: 'pm-item' });
+
+      // Name
+      const nameRow = el('div', { class: 'pm-row' });
+      const nameInput = el('input', {
+        type: 'text',
+        value: preset.name,
+        class: 'pm-name-input',
+        oninput: (e) => {
+          preset.name = e.target.value;
+          savePresets();
+          renderClientPicker();
+        },
+      });
+      nameInput.value = preset.name;
+      nameRow.appendChild(nameInput);
+
+      const deleteBtn = el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small pm-delete',
+        title: 'Delete preset',
+        onclick: () => {
+          if (!confirm(`Delete preset "${preset.name}"?`)) return;
+          const presets = state.presets[client.id];
+          const idx = presets.findIndex(p => p.id === preset.id);
+          if (idx >= 0) presets.splice(idx, 1);
+          // Clear activePresetId if it pointed to this preset
+          for (const k of ['static', 'video', 'copy']) {
+            if (state.forms[k].activePresetId === preset.id) {
+              state.forms[k].activePresetId = null;
+            }
+          }
+          savePresets();
+          saveState();
+          renderClientPicker();
+          renderList();
+        },
+      }, 'Delete');
+      nameRow.appendChild(deleteBtn);
+      item.appendChild(nameRow);
+
+      // Field chips
+      const fieldsBox = el('div', { class: 'pm-fields' });
+      for (const fname of fieldList) {
+        const chip = el('span', { class: 'pm-chip', title: `Click × to remove ${fname} from this preset` });
+        chip.appendChild(el('span', { class: 'pm-chip-name' }, fname));
+        chip.appendChild(el('span', { class: 'pm-chip-val' }, ': ' + truncate(String(preset.values[fname]), 40)));
+        chip.appendChild(el('button', {
+          type: 'button',
+          class: 'pm-chip-x',
+          title: 'Remove this field from preset',
+          onclick: () => {
+            delete preset.values[fname];
+            // If preset has no fields left, remove it entirely
+            if (Object.keys(preset.values).length === 0) {
+              const presets = state.presets[client.id];
+              const idx = presets.findIndex(p => p.id === preset.id);
+              if (idx >= 0) presets.splice(idx, 1);
+              for (const k of ['static', 'video', 'copy']) {
+                if (state.forms[k].activePresetId === preset.id) {
+                  state.forms[k].activePresetId = null;
+                }
+              }
+              saveState();
+            }
+            savePresets();
+            renderClientPicker();
+            renderList();
+          },
+        }, '×'));
+        fieldsBox.appendChild(chip);
+      }
+      item.appendChild(fieldsBox);
+
+      listEl.appendChild(item);
+    }
+  };
+
+  const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) close(); } });
+  const dialog = el('div', { class: 'modal-dialog' });
+
+  // Header
+  const header = el('div', { class: 'modal-header' },
+    el('h2', {}, `Presets for ${client.name}`),
+    el('button', { type: 'button', class: 'modal-close', onclick: close, title: 'Close' }, '×'),
   );
-  if (!choice || !choice.trim()) return;
+  dialog.appendChild(header);
 
-  const trimmed = choice.trim();
-  const renameMatch = trimmed.match(/^rename\s+(\d+)$/i);
-  if (renameMatch) {
-    const idx = parseInt(renameMatch[1], 10) - 1;
-    const p = presets[idx];
-    if (!p) { alert('Invalid number.'); return; }
-    const newName = prompt(`New name for "${p.name}":`, p.name);
-    if (!newName || !newName.trim()) return;
-    p.name = newName.trim();
-    savePresets();
-    renderClientPicker();
-    return;
-  }
+  // Body
+  const body = el('div', { class: 'modal-body' });
+  body.appendChild(el('p', { class: 'modal-hint' },
+    'Edit names inline. Delete a preset, or remove individual fields with their × button.'
+  ));
+  const listEl = el('div', { class: 'pm-list' });
+  body.appendChild(listEl);
+  dialog.appendChild(body);
 
-  const idx = parseInt(trimmed, 10) - 1;
-  if (Number.isNaN(idx) || !presets[idx]) {
-    alert('Invalid input. Use a number to delete, or "rename N" to rename.');
-    return;
-  }
-  const p = presets[idx];
-  if (!confirm(`Delete preset "${p.name}"?`)) return;
-  presets.splice(idx, 1);
-  savePresets();
-  renderClientPicker();
+  // Footer
+  const footer = el('div', { class: 'modal-footer' },
+    el('button', { type: 'button', class: 'btn-primary', onclick: close }, 'Done'),
+  );
+  dialog.appendChild(footer);
+
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
+  renderList();
+}
+
+function truncate(s, n) {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
 function renderTabs() {
