@@ -29,9 +29,9 @@
         <li><a href="#step2">Step 2 — Create ClickUp task + Google Doc</a></li>
         <li><a href="#step3">Step 3 — Replace placeholder with the .docx</a></li>
         <li><a href="#step4">Step 4 — Hand off to PM</a></li>
-        <li><a href="#step5">Step 5 — PM enters into Creative Tracker</a></li>
-        <li><a href="#step6">Step 6 — PM copies names back into the brief</a></li>
-        <li><a href="#step7">Step 7 — Move Google Doc to client folder</a></li>
+        <li><a href="#step5">Step 5 — PM moves Google Doc to client folder</a></li>
+        <li><a href="#step6">Step 6 — PM enters into Creative Tracker</a></li>
+        <li><a href="#step7">Step 7 — PM copies names back into the brief</a></li>
         <li><a href="#tips">Tips & gotchas</a></li>
       </ol>
     </nav>
@@ -116,13 +116,25 @@
       </section>
 
       <section id="step5" class="sop-section">
-        <h2><span class="sop-step-num">5</span> PM enters into Creative Tracker</h2>
+        <h2><span class="sop-step-num">5</span> PM moves Google Doc to client folder</h2>
         <p class="sop-role-tag">Project Manager</p>
+        <p>Do this <strong>first</strong> — before entering anything into the tracker. The brief's URL stays the same when it moves between Drive folders, but moving it now means the Request Doc URL captured in the tracker points to the doc in its canonical location from day one.</p>
         <ol class="sop-steps">
           <li>Open the brief Google Doc the copywriter handed off.</li>
-          <li>Press <code>Cmd+A</code> then <code>Cmd+C</code> to copy the entire doc contents.</li>
+          <li>Click the folder icon next to the title (or <strong>File → Move</strong>).</li>
+          <li>Move it to the client's profile folder in Drive (<em>Clients → {Client Name} → Briefs</em> or wherever your team's convention is).</li>
+          <li>Update the ClickUp task to reflect the brief is now in the canonical location.</li>
+        </ol>
+      </section>
+
+      <section id="step6" class="sop-section">
+        <h2><span class="sop-step-num">6</span> PM enters into Creative Tracker</h2>
+        <p class="sop-role-tag">Project Manager</p>
+        <ol class="sop-steps">
+          <li>With the brief Google Doc still open (it's now in the client folder from Step 5), press <code>Cmd+A</code> then <code>Cmd+C</code> to copy the entire doc contents.</li>
+          <li>Copy the Google Doc URL from your browser address bar.</li>
           <li>Open <a href="../pm/index.html" target="_blank" rel="noopener">PM Tools</a> → the <strong>Brief → Tracker</strong> tab is selected by default.</li>
-          <li>Paste into the textarea. The brief type auto-detects.</li>
+          <li>Paste the brief contents into the textarea. The brief type auto-detects.</li>
           <li>Paste the Google Doc URL into the <strong>Request Doc URL</strong> field.</li>
           <li>Click <strong>Generate Tracker Rows</strong>.</li>
           <li>The result panel shows two preview tables — Block 1 (left columns) and Block 2 (right columns) — and a banner with <strong>Open {Client} Tracker ↗</strong> if the client is recognized.</li>
@@ -135,8 +147,8 @@
         </ol>
       </section>
 
-      <section id="step6" class="sop-section">
-        <h2><span class="sop-step-num">6</span> PM copies names back into the brief</h2>
+      <section id="step7" class="sop-section">
+        <h2><span class="sop-step-num">7</span> PM copies names back into the brief</h2>
         <p class="sop-role-tag">Project Manager</p>
         <ol class="sop-steps">
           <li>In the tracker, the formula now auto-fills the Creative Name column (<em>Static Creative Name</em>, <em>Video Creative Name</em>, or <em>Copy Name</em>) for the rows you just added.</li>
@@ -151,16 +163,6 @@
             </ul>
           </li>
           <li>When all rows are checked, the brief is complete.</li>
-        </ol>
-      </section>
-
-      <section id="step7" class="sop-section">
-        <h2><span class="sop-step-num">7</span> Move Google Doc to client folder</h2>
-        <p class="sop-role-tag">Project Manager</p>
-        <ol class="sop-steps">
-          <li>In the brief Google Doc, click the folder icon next to the title (or <strong>File → Move</strong>).</li>
-          <li>Move it to the client's profile folder in Drive (<em>Clients → {Client Name} → Briefs</em> or wherever your team's convention is).</li>
-          <li>Update the ClickUp task to reflect the brief is now in the canonical location.</li>
         </ol>
       </section>
 
