@@ -102,20 +102,20 @@
 }
 
 .sop-roles {
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
   margin-top: 14px;
 }
 
 .sop-role {
-  flex: 1;
-  padding: 14px;
+  padding: 14px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fafafa;
   font-size: 13px;
   text-align: center;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .sop-tools {
