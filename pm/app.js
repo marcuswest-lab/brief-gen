@@ -1,0 +1,436 @@
+// PM app — two-tab tool for moving data between briefs and the Creative Tracker.
+
+import { parseBrief, detectBriefType } from './lib/brief-parser.js';
+import { mapBriefToTracker, blockToTSV } from './lib/tracker-mapper.js';
+import { TRACKERS } from './lib/tracker-config.js';
+
+const STORAGE_KEY = 'pbg.pm.state.v1';
+
+const state = {
+  tab: 'brief-to-tracker',  // | 'tracker-to-brief'
+  // Brief → Tracker
+  briefText: '',
+  requestDoc: '',
+  briefTypeOverride: '',  // '' = auto-detect
+  result: null,            // mapBriefToTracker output
+  // Tracker → Brief
+  trackerNames: '',
+  filledStates: {},        // { [index]: true } UI checkmarks
+};
+
+// -------- Persistence --------
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      tab: state.tab,
+      briefText: state.briefText,
+      requestDoc: state.requestDoc,
+      briefTypeOverride: state.briefTypeOverride,
+      trackerNames: state.trackerNames,
+      filledStates: state.filledStates,
+    }));
+  } catch (e) {
+    console.warn('Save failed:', e);
+  }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    Object.assign(state, p);
+    if (!state.filledStates) state.filledStates = {};
+  } catch (e) {
+    console.warn('Load failed:', e);
+  }
+}
+
+// -------- DOM helpers --------
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') node.className = v;
+    else if (k === 'html') node.innerHTML = v;
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === false || v == null) continue;
+    else if (v === true) node.setAttribute(k, '');
+    else node.setAttribute(k, v);
+  }
+  for (const child of children) {
+    if (child == null || child === false) continue;
+    node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+  }
+  return node;
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    console.warn('Clipboard write failed:', e);
+    return false;
+  }
+}
+
+function flashStatus(msg, kind = 'success') {
+  const status = document.getElementById('pm-status');
+  if (!status) return;
+  status.className = kind;
+  status.textContent = msg;
+  setTimeout(() => {
+    if (status.textContent === msg) {
+      status.textContent = '';
+      status.className = '';
+    }
+  }, 3500);
+}
+
+// -------- Tabs --------
+
+function renderTabs() {
+  const wrap = document.getElementById('pm-tabs');
+  wrap.innerHTML = '';
+  const tabs = [
+    { id: 'brief-to-tracker', label: 'Brief → Tracker' },
+    { id: 'tracker-to-brief', label: 'Tracker → Brief' },
+  ];
+  for (const t of tabs) {
+    wrap.appendChild(el('button', {
+      type: 'button',
+      class: 'tab-btn' + (state.tab === t.id ? ' active' : ''),
+      onclick: () => {
+        state.tab = t.id;
+        saveState();
+        renderAll();
+      },
+    }, t.label));
+  }
+}
+
+// -------- Tab 1: Brief → Tracker --------
+
+function renderBriefToTracker() {
+  const wrap = document.getElementById('pm-content');
+  wrap.innerHTML = '';
+
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h2', {}, 'Paste your brief'));
+
+  const detectedType = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
+  const detectionLine = detectedType
+    ? el('div', { class: 'pm-detect' }, `Detected brief type: `, el('strong', {}, TRACKERS[detectedType]?.label || detectedType))
+    : el('div', { class: 'pm-detect pm-detect-empty' }, 'Paste a brief to auto-detect its type.');
+  card.appendChild(detectionLine);
+
+  // Textarea
+  const briefTa = el('textarea', {
+    id: 'brief-text',
+    placeholder: 'Open the brief in Google Docs (or Word), Cmd+A, Cmd+C, then paste here…',
+    rows: 14,
+    oninput: (e) => {
+      state.briefText = e.target.value;
+      saveState();
+      // Re-render only the detection line (not the whole tab) so the cursor stays put
+      const newDetected = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
+      const newLine = newDetected
+        ? el('div', { class: 'pm-detect' }, 'Detected brief type: ', el('strong', {}, TRACKERS[newDetected]?.label || newDetected))
+        : el('div', { class: 'pm-detect pm-detect-empty' }, 'Paste a brief to auto-detect its type.');
+      detectionLine.replaceWith(newLine);
+    },
+  });
+  briefTa.value = state.briefText;
+  card.appendChild(briefTa);
+
+  // Inputs row: Request Doc URL + override
+  const inputsRow = el('div', { class: 'pm-input-row' });
+
+  const urlField = el('div', { class: 'pm-input-field' });
+  urlField.appendChild(el('label', { for: 'request-doc' }, 'Request Doc URL', el('span', { class: 'pm-hint-inline' }, ' (goes into the Request Doc tracker column)')));
+  const urlInput = el('input', {
+    id: 'request-doc',
+    type: 'text',
+    placeholder: 'https://docs.google.com/document/d/...',
+    oninput: (e) => { state.requestDoc = e.target.value; saveState(); },
+  });
+  urlInput.value = state.requestDoc;
+  urlField.appendChild(urlInput);
+  inputsRow.appendChild(urlField);
+
+  const overrideField = el('div', { class: 'pm-input-field pm-input-narrow' });
+  overrideField.appendChild(el('label', { for: 'type-override' }, 'Brief type override'));
+  const overrideSelect = el('select', {
+    id: 'type-override',
+    onchange: (e) => {
+      state.briefTypeOverride = e.target.value;
+      saveState();
+      renderBriefToTracker();
+    },
+  },
+    el('option', { value: '' }, 'Auto-detect'),
+    el('option', { value: 'static' }, 'Static'),
+    el('option', { value: 'video' }, 'Video'),
+    el('option', { value: 'copy' }, 'Body Copy'),
+  );
+  overrideSelect.value = state.briefTypeOverride;
+  overrideField.appendChild(overrideSelect);
+  inputsRow.appendChild(overrideField);
+
+  card.appendChild(inputsRow);
+
+  // Actions
+  const actions = el('div', { class: 'pm-actions' },
+    el('button', { type: 'button', class: 'btn-secondary', onclick: handleClearBrief }, 'Clear'),
+    el('button', { type: 'button', class: 'btn-primary', onclick: handleGenerateRows }, 'Generate Tracker Rows'),
+  );
+  card.appendChild(actions);
+  wrap.appendChild(card);
+
+  // Result panel
+  if (state.result) {
+    wrap.appendChild(renderResultPanel(state.result));
+  }
+}
+
+function handleClearBrief() {
+  state.briefText = '';
+  state.requestDoc = '';
+  state.briefTypeOverride = '';
+  state.result = null;
+  saveState();
+  renderBriefToTracker();
+}
+
+function handleGenerateRows() {
+  if (!state.briefText.trim()) {
+    flashStatus('Paste a brief first.', 'error');
+    return;
+  }
+  try {
+    const brief = parseBrief(state.briefText);
+    const result = mapBriefToTracker(brief, {
+      requestDoc: state.requestDoc,
+      briefTypeOverride: state.briefTypeOverride || undefined,
+    });
+    if (result.variationCount === 0) {
+      flashStatus('No variations found in the brief. Make sure you copied the full brief including the variation tables.', 'error');
+      return;
+    }
+    state.result = result;
+    saveState();
+    renderBriefToTracker();
+  } catch (e) {
+    console.error(e);
+    flashStatus('Error: ' + e.message, 'error');
+  }
+}
+
+function renderResultPanel(result) {
+  const card = el('div', { class: 'card pm-result' });
+  card.appendChild(el('h2', {}, `${result.trackerLabel} — ${result.variationCount} row${result.variationCount === 1 ? '' : 's'}`));
+
+  card.appendChild(el('p', { class: 'pm-banner' },
+    `Open your client's tracker, go to the `, el('strong', {}, result.trackerLabel),
+    ` tab, click the next empty row, then paste each block at the correct starting column.`,
+  ));
+
+  // Block 1
+  card.appendChild(renderBlockPanel('Block 1', result.block1, `Paste at column ${result.block1.startCol}`));
+  // Block 2
+  card.appendChild(renderBlockPanel('Block 2', result.block2, `Paste at column ${result.block2.startCol}`));
+
+  // Notes
+  if (result.notes && result.notes.length > 0) {
+    const notesEl = el('div', { class: 'pm-notes' });
+    notesEl.appendChild(el('h3', {}, 'Notes'));
+    const list = el('ul', {});
+    for (const n of result.notes) list.appendChild(el('li', {}, n));
+    notesEl.appendChild(list);
+    card.appendChild(notesEl);
+  }
+
+  return card;
+}
+
+function renderBlockPanel(title, block, subtitle) {
+  const wrap = el('div', { class: 'pm-block' });
+
+  const header = el('div', { class: 'pm-block-header' });
+  header.appendChild(el('div', {},
+    el('h3', {}, title),
+    el('span', { class: 'pm-block-sub' }, subtitle),
+  ));
+  const copyBtn = el('button', {
+    type: 'button',
+    class: 'btn-primary btn-small',
+    onclick: async () => {
+      const tsv = blockToTSV(block);
+      const ok = await copyToClipboard(tsv);
+      if (ok) {
+        copyBtn.textContent = '✓ Copied';
+        flashStatus(`${title} copied — paste at column ${block.startCol}.`);
+        setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1800);
+      } else {
+        flashStatus('Copy failed — your browser may have blocked clipboard access.', 'error');
+      }
+    },
+  }, '📋 Copy');
+  header.appendChild(copyBtn);
+  wrap.appendChild(header);
+
+  // Render preview table
+  const tbl = el('table', { class: 'pm-preview' });
+  const thead = el('thead');
+  const headerRow = el('tr');
+  for (const h of block.headers) headerRow.appendChild(el('th', {}, h));
+  thead.appendChild(headerRow);
+  tbl.appendChild(thead);
+  const tbody = el('tbody');
+  for (const row of block.rows) {
+    const tr = el('tr');
+    for (const cell of row) {
+      const td = el('td', { title: cell || '' });
+      td.textContent = cell == null || cell === '' ? '—' : String(cell);
+      if (cell === '' || cell == null) td.className = 'pm-empty-cell';
+      tbody.appendChild(tr);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);
+  const tableScroll = el('div', { class: 'pm-table-scroll' }, tbl);
+  wrap.appendChild(tableScroll);
+
+  return wrap;
+}
+
+// -------- Tab 2: Tracker → Brief --------
+
+function renderTrackerToBrief() {
+  const wrap = document.getElementById('pm-content');
+  wrap.innerHTML = '';
+
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h2', {}, 'Paste auto-generated names from the tracker'));
+  card.appendChild(el('p', { class: 'pm-help' },
+    'After Block 1 is pasted, the tracker formula auto-fills the Creative Name column (Static Creative Name, Video Creative Name, or Copy Name). Select that column for the rows you just added, copy it, then paste here. One name per line.',
+  ));
+
+  const ta = el('textarea', {
+    id: 'tracker-names',
+    placeholder: `Quiet Overwhelm - Offer Lead 1 - CID65D8FUL\nQuiet Overwhelm - Promise Lead 2 - CIDABC1234\n...`,
+    rows: 8,
+    oninput: (e) => {
+      state.trackerNames = e.target.value;
+      saveState();
+      renderTrackerOutput();
+    },
+  });
+  ta.value = state.trackerNames;
+  card.appendChild(ta);
+
+  card.appendChild(el('div', { class: 'pm-actions' },
+    el('button', { type: 'button', class: 'btn-secondary', onclick: () => {
+      state.trackerNames = '';
+      state.filledStates = {};
+      saveState();
+      renderTrackerToBrief();
+    }}, 'Clear'),
+  ));
+  wrap.appendChild(card);
+
+  // Output panel
+  const outputCard = el('div', { id: 'tracker-output', class: 'card' });
+  wrap.appendChild(outputCard);
+  renderTrackerOutput();
+}
+
+function renderTrackerOutput() {
+  const card = document.getElementById('tracker-output');
+  if (!card) return;
+  card.innerHTML = '';
+
+  const names = (state.trackerNames || '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  if (names.length === 0) {
+    card.appendChild(el('div', { class: 'pm-detect pm-detect-empty' },
+      'Paste names above to see one-click copy buttons here.'));
+    return;
+  }
+
+  const header = el('div', { class: 'pm-block-header' },
+    el('h3', {}, `${names.length} name${names.length === 1 ? '' : 's'}`),
+    el('button', { type: 'button', class: 'btn-secondary btn-small', onclick: async () => {
+      const ok = await copyToClipboard(names.join('\n'));
+      if (ok) flashStatus('All names copied (newline-separated).');
+    }}, '📋 Copy all'),
+  );
+  card.appendChild(header);
+
+  const list = el('div', { class: 'pm-name-list' });
+  names.forEach((name, idx) => {
+    const item = el('div', { class: 'pm-name-item' + (state.filledStates[idx] ? ' filled' : '') });
+
+    const cb = el('input', {
+      type: 'checkbox',
+      class: 'pm-name-check',
+      title: 'Mark as pasted into brief',
+      onchange: (e) => {
+        state.filledStates[idx] = e.target.checked;
+        saveState();
+        item.classList.toggle('filled', e.target.checked);
+      },
+    });
+    if (state.filledStates[idx]) cb.setAttribute('checked', '');
+    item.appendChild(cb);
+
+    item.appendChild(el('span', { class: 'pm-name-num' }, `Creative ${idx + 1}:`));
+    item.appendChild(el('span', { class: 'pm-name-text' }, name));
+
+    const btn = el('button', {
+      type: 'button',
+      class: 'btn-secondary btn-small',
+      onclick: async () => {
+        const ok = await copyToClipboard(name);
+        if (ok) {
+          btn.textContent = '✓';
+          state.filledStates[idx] = true;
+          saveState();
+          item.classList.add('filled');
+          item.querySelector('.pm-name-check').checked = true;
+          setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+        }
+      },
+    }, '📋 Copy');
+    item.appendChild(btn);
+
+    list.appendChild(item);
+  });
+  card.appendChild(list);
+}
+
+// -------- Render --------
+
+function renderAll() {
+  renderTabs();
+  if (state.tab === 'tracker-to-brief') {
+    renderTrackerToBrief();
+  } else {
+    renderBriefToTracker();
+  }
+}
+
+// -------- Init --------
+
+function init() {
+  loadState();
+  renderAll();
+}
+
+document.addEventListener('DOMContentLoaded', init);

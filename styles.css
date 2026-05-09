@@ -384,6 +384,21 @@ html, body {
   background: var(--card);
 }
 
+.app-footer .footer-sep {
+  margin: 0 8px;
+  color: #ccc;
+}
+
+.app-footer .footer-link {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.app-footer .footer-link:hover {
+  text-decoration: underline;
+}
+
 /* -------- Modal (preset manager) -------- */
 
 .modal-overlay {

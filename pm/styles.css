@@ -1,0 +1,301 @@
+/* PM-app-specific styles. Augments the shared ../styles.css. */
+
+.pm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pm-detect {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 4px 0 12px;
+}
+
+.pm-detect strong {
+  color: var(--text);
+}
+
+.pm-detect-empty {
+  font-style: italic;
+}
+
+#brief-text,
+#tracker-names {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: #fff;
+  resize: vertical;
+  min-height: 160px;
+}
+
+#brief-text:focus,
+#tracker-names:focus {
+  outline: none;
+  border-color: #888;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+.pm-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.pm-input-narrow {
+  min-width: 180px;
+}
+
+.pm-input-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.pm-hint-inline {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.pm-input-field input,
+.pm-input-field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  font-family: inherit;
+}
+
+.pm-input-field input:focus,
+.pm-input-field select:focus {
+  outline: none;
+  border-color: #888;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+.pm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.pm-help {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+#pm-status {
+  position: fixed;
+  bottom: 70px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 360px;
+  z-index: 50;
+}
+
+#pm-status:empty {
+  display: none;
+}
+
+#pm-status.success {
+  background: #f0f8f0;
+  color: var(--success);
+  border: 1px solid #c2e0c2;
+}
+
+#pm-status.error {
+  background: #fef0f0;
+  color: var(--danger);
+  border: 1px solid #f5c2c2;
+}
+
+/* -------- Result panels -------- */
+
+.pm-result h2 {
+  margin-bottom: 6px;
+}
+
+.pm-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: #f5f9ff;
+  border: 1px solid #cfe0fa;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #234;
+}
+
+.pm-block {
+  margin-bottom: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.pm-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+
+.pm-block-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-block;
+  margin-right: 10px;
+}
+
+.pm-block-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pm-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.pm-preview {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: #fff;
+}
+
+.pm-preview th,
+.pm-preview td {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pm-preview th {
+  background: #f5f5f7;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pm-preview td.pm-empty-cell {
+  color: #ccc;
+  font-style: italic;
+  background: #fafafa;
+}
+
+.pm-notes {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: #fff8e6;
+  border: 1px solid #f0deaf;
+  border-radius: 6px;
+}
+
+.pm-notes h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7a5b00;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pm-notes ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #5a3a00;
+  line-height: 1.55;
+}
+
+.pm-notes li {
+  margin-bottom: 4px;
+}
+
+/* -------- Tracker → Brief: name list -------- */
+
+.pm-name-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pm-name-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.pm-name-item.filled {
+  background: #f0f8f0;
+  border-color: #c2e0c2;
+  opacity: 0.7;
+}
+
+.pm-name-item.filled .pm-name-text {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.pm-name-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.pm-name-num {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 80px;
+}
+
+.pm-name-text {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+
+@media (max-width: 720px) {
+  .pm-input-row {
+    grid-template-columns: 1fr;
+  }
+}
