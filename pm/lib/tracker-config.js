@@ -112,7 +112,7 @@ export const TRACKERS = {
         { col: 'Y',  label: 'Linked Creative ID', source: 'blank' },
         { col: 'Z',  label: 'Copywriter',         source: 'overview:Copywriter' },
         { col: 'AA', label: 'Designer',           source: 'blank' },
-        { col: 'AB', label: 'Variation Name',     source: 'variation:Lead Type', transform: 'leadTypeNormalize' },
+        { col: 'AB', label: 'Variation Name',     source: 'blank', note: 'Variation Name (col AB) left blank — tracker formula auto-generates it from Lead Type / Variation Type, same as Copy Name and CPID.' },
       ],
     },
   },
