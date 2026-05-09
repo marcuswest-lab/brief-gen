@@ -34,6 +34,8 @@
         <li><a href="#step7">Step 7 — PM copies names back into the brief</a></li>
         <li><a href="#step8">Step 8 — PM submits creative request in ClickUp</a></li>
         <li><a href="#step9">Step 9 — PM posts deliverables for review in Slack</a></li>
+        <li><a href="#step10">Step 10 — Revision loop / approval</a></li>
+        <li><a href="#step11">Step 11 — PM creates launch task for media buyer</a></li>
         <li><a href="#tips">Tips & gotchas</a></li>
       </ol>
     </nav>
@@ -202,8 +204,57 @@
           <li>Post in the appropriate Slack channel (client review channel or internal creative review channel — match team convention).</li>
           <li>Tag the reviewer — typically <strong>Nate</strong> (or whoever originally created/owned the ad idea). Include the brief Google Doc link in the message for context.</li>
           <li>Reviewer leaves feedback in Slack, in the Figma/Frame.io file directly, or in the ClickUp task — whichever the team uses.</li>
-          <li>If revisions are needed, route the feedback back to the creative team. Otherwise, mark the creative as ready to launch.</li>
+          <li>Continue to <strong>Step 10</strong> — either route revisions or move to launch.</li>
         </ol>
+      </section>
+
+      <section id="step10" class="sop-section">
+        <h2><span class="sop-step-num">10</span> Revision loop / approval</h2>
+        <p class="sop-role-tag">Project Manager</p>
+        <p>Iterate on revisions until the creative is approved. Repeat as many cycles as needed.</p>
+        <ol class="sop-steps">
+          <li><strong>If revisions are needed:</strong>
+            <ul>
+              <li>Send the consolidated feedback back to the creative team (in the ClickUp task or Slack thread, whichever the team uses).</li>
+              <li>When the creative team posts the updated version, repeat <a href="#step9">Step 9</a> — post the new file in Slack and re-tag the reviewer.</li>
+              <li>Loop until approved.</li>
+            </ul>
+          </li>
+          <li><strong>If the creative is approved:</strong>
+            <ul>
+              <li>Let the creative team know it's approved (Slack message or ClickUp comment).</li>
+              <li>Ask them to upload the final assets to the client's Drive folder (where the media buyer will pull from).</li>
+              <li>Once they confirm the upload, continue to <a href="#step11">Step 11</a>.</li>
+            </ul>
+          </li>
+        </ol>
+      </section>
+
+      <section id="step11" class="sop-section">
+        <h2><span class="sop-step-num">11</span> PM creates launch task for media buyer</h2>
+        <p class="sop-role-tag">Project Manager</p>
+        <p>Approved creatives are in Drive. Now hand them off to the media buyer for launch.</p>
+        <ol class="sop-steps">
+          <li>In ClickUp, create a <strong>launch task</strong> in the appropriate media buying list for this client.</li>
+          <li>Include in the task description:
+            <ul>
+              <li>Link to the <strong>Creative Tracker</strong> for this client, along with which row(s) the creative(s) live on (e.g., "rows 4–8 in Copy Tracker")</li>
+              <li>Link to the <strong>Drive folder</strong> where the final assets are uploaded</li>
+              <li>Any launch-specific notes (audience, budget, timing, ad set placement) if known</li>
+            </ul>
+          </li>
+          <li>Assign the task to the media buyer for this account.</li>
+          <li>Send a Slack message to the media buyer:
+            <ul>
+              <li>Tell them you've created a launch task for them.</li>
+              <li>Include the direct link to the ClickUp launch task.</li>
+            </ul>
+          </li>
+          <li>Media buyer takes it from here — they'll pull the assets, set up the ad sets, and launch.</li>
+        </ol>
+        <div class="sop-callout">
+          <strong>After launch:</strong> the media buyer (or whoever owns post-launch tracking) updates the tracker's <em>Status</em> column from blank to <em>Testing</em> — and later <em>Winner</em> or <em>Loser</em> based on performance.
+        </div>
       </section>
 
       <section id="tips" class="sop-section">
