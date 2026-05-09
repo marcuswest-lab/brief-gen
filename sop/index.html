@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOP — Brief → Tracker Workflow — BAD Marketing</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <h1>SOP — Brief → Tracker Workflow</h1>
+      <span class="subtitle">BAD Marketing</span>
+    </div>
+    <div class="sop-header-links">
+      <a href="../index.html" class="btn-secondary btn-small">Briefgen ↗</a>
+      <a href="../pm/index.html" class="btn-secondary btn-small">PM Tools ↗</a>
+    </div>
+  </header>
+
+  <main class="sop-main">
+    <nav class="sop-toc">
+      <h3>Contents</h3>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#tools">The three apps</a></li>
+        <li><a href="#step1">Step 1 — Copywriter generates the brief</a></li>
+        <li><a href="#step2">Step 2 — Create ClickUp task + Google Doc</a></li>
+        <li><a href="#step3">Step 3 — Replace placeholder with the .docx</a></li>
+        <li><a href="#step4">Step 4 — Hand off to PM</a></li>
+        <li><a href="#step5">Step 5 — PM enters into Creative Tracker</a></li>
+        <li><a href="#step6">Step 6 — PM copies names back into the brief</a></li>
+        <li><a href="#step7">Step 7 — Move Google Doc to client folder</a></li>
+        <li><a href="#tips">Tips & gotchas</a></li>
+      </ol>
+    </nav>
+
+    <article class="sop-content">
+
+      <section id="overview" class="sop-section">
+        <h2>Overview</h2>
+        <p>This SOP covers the end-to-end workflow for creating an ad creative brief, getting it into the Creative Tracker, and finalizing the brief with auto-generated creative names. It involves <strong>two roles</strong>: the copywriter (or anyone authoring a brief) and the project manager (PM).</p>
+        <div class="sop-roles">
+          <div class="sop-role"><strong>Copywriter</strong><br>Steps 1–4</div>
+          <div class="sop-role"><strong>Project Manager</strong><br>Steps 5–7</div>
+        </div>
+      </section>
+
+      <section id="tools" class="sop-section">
+        <h2>The three apps</h2>
+        <div class="sop-tools">
+          <a href="../index.html" target="_blank" rel="noopener" class="sop-tool">
+            <div class="sop-tool-name">Briefgen</div>
+            <div class="sop-tool-url">marcuswest-lab.github.io/brief-gen/</div>
+            <div class="sop-tool-desc">Form for the copywriter. Generates a filled .docx for any client + brief type (Static, Video, Body Copy).</div>
+          </a>
+          <a href="../pm/index.html" target="_blank" rel="noopener" class="sop-tool">
+            <div class="sop-tool-name">PM Tools (Brief ⇄ Tracker)</div>
+            <div class="sop-tool-url">marcuswest-lab.github.io/brief-gen/pm/</div>
+            <div class="sop-tool-desc">For PMs. Two tabs: Brief → Tracker (paste a brief, get TSV blocks ready for the Creative Tracker) and Tracker → Brief (paste auto-generated names, get one-click copy buttons).</div>
+          </a>
+          <div class="sop-tool sop-tool-current">
+            <div class="sop-tool-name">This SOP</div>
+            <div class="sop-tool-url">marcuswest-lab.github.io/brief-gen/sop/</div>
+            <div class="sop-tool-desc">The doc you're reading. Bookmark it, send the link to anyone onboarding.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="step1" class="sop-section">
+        <h2><span class="sop-step-num">1</span> Copywriter generates the brief</h2>
+        <p class="sop-role-tag">Copywriter</p>
+        <ol class="sop-steps">
+          <li>Open <a href="../index.html" target="_blank" rel="noopener">Briefgen</a>.</li>
+          <li>Pick the <strong>Client</strong> in the top-right header.</li>
+          <li>Pick the <strong>brief type</strong> tab: Static, Video, or Body Copy.</li>
+          <li>(Optional) Pick a saved <strong>Preset</strong> to pre-fill the overview fields. To save a new preset, fill the overview fields you want to reuse, then click <em>+ Save preset</em> and name it.</li>
+          <li>Fill the <strong>Overview</strong> section. Idea Name and File Name are <em>not</em> required — those usually come later from the tracker.</li>
+          <li>Add 1–5 <strong>creatives</strong>. Each creative is one row in the brief.</li>
+          <li>Click <strong>Generate Brief</strong>. The .docx downloads to your Downloads folder. File name pattern: <code>{Client}_{BriefType}_{Idea Name}_{YYYY-MM-DD}.docx</code></li>
+        </ol>
+        <div class="sop-callout">
+          <strong>Auto-saves to your browser.</strong> If you close the tab, your in-progress brief is restored on reload.
+        </div>
+      </section>
+
+      <section id="step2" class="sop-section">
+        <h2><span class="sop-step-num">2</span> Create ClickUp task + Google Doc</h2>
+        <p class="sop-role-tag">Copywriter</p>
+        <ol class="sop-steps">
+          <li>In ClickUp, create a new task in the appropriate creative request list for this client.</li>
+          <li>The task automatically generates a Google Doc link (BAD Marketing's ClickUp setup). This Doc is the canonical Request Doc that goes into the tracker.</li>
+          <li>Open the Google Doc.</li>
+        </ol>
+      </section>
+
+      <section id="step3" class="sop-section">
+        <h2><span class="sop-step-num">3</span> Replace the Doc placeholder with your .docx</h2>
+        <p class="sop-role-tag">Copywriter</p>
+        <ol class="sop-steps">
+          <li>In the open Google Doc, click <strong>File → Open</strong>.</li>
+          <li>In the <em>Upload</em> tab, drag the .docx that Briefgen downloaded.</li>
+          <li>Google Docs imports the .docx contents, replacing the empty placeholder with your filled brief (overview + creative tables).</li>
+          <li>Verify the headings, dropdowns, and creative tables look right.</li>
+        </ol>
+      </section>
+
+      <section id="step4" class="sop-section">
+        <h2><span class="sop-step-num">4</span> Hand off to PM</h2>
+        <p class="sop-role-tag">Copywriter</p>
+        <ol class="sop-steps">
+          <li>In the ClickUp task, mark the brief as ready for review (or however the team flags handoff — Slack ping, status change, assignee swap, etc.).</li>
+          <li>The PM picks it up from here.</li>
+        </ol>
+      </section>
+
+      <section id="step5" class="sop-section">
+        <h2><span class="sop-step-num">5</span> PM enters into Creative Tracker</h2>
+        <p class="sop-role-tag">Project Manager</p>
+        <ol class="sop-steps">
+          <li>Open the brief Google Doc the copywriter handed off.</li>
+          <li>Press <code>Cmd+A</code> then <code>Cmd+C</code> to copy the entire doc contents.</li>
+          <li>Open <a href="../pm/index.html" target="_blank" rel="noopener">PM Tools</a> → the <strong>Brief → Tracker</strong> tab is selected by default.</li>
+          <li>Paste into the textarea. The brief type auto-detects.</li>
+          <li>Paste the Google Doc URL into the <strong>Request Doc URL</strong> field.</li>
+          <li>Click <strong>Generate Tracker Rows</strong>.</li>
+          <li>The result panel shows two preview tables — Block 1 (left columns) and Block 2 (right columns) — and a banner with <strong>Open {Client} Tracker ↗</strong> if the client is recognized.</li>
+          <li>Click the tracker link → opens the Creative Tracker in a new tab.</li>
+          <li>In the tracker, go to the correct tab (Static / Video / Copy Tracker), click the next empty row in column A.</li>
+          <li>Switch back to PM Tools → click <strong>📋 Copy</strong> on Block 1 → switch to the tracker → paste.</li>
+          <li>Click the cell at the column shown in Block 2's subtitle (usually <strong>W</strong> for Static / Copy, <strong>U</strong> for Video).</li>
+          <li>Switch back to PM Tools → click <strong>📋 Copy</strong> on Block 2 → switch to the tracker → paste.</li>
+          <li>Read the Notes panel at the bottom — it explains every column we leave blank or default (e.g. Status, Platform=Meta, Copy Name auto-formula).</li>
+        </ol>
+      </section>
+
+      <section id="step6" class="sop-section">
+        <h2><span class="sop-step-num">6</span> PM copies names back into the brief</h2>
+        <p class="sop-role-tag">Project Manager</p>
+        <ol class="sop-steps">
+          <li>In the tracker, the formula now auto-fills the Creative Name column (<em>Static Creative Name</em>, <em>Video Creative Name</em>, or <em>Copy Name</em>) for the rows you just added.</li>
+          <li>Select that column for those rows → <code>Cmd+C</code>.</li>
+          <li>In PM Tools, switch to the <strong>Tracker → Brief</strong> tab.</li>
+          <li>Paste into the textarea. Each line becomes a numbered item with its own <strong>📋 Copy</strong> button.</li>
+          <li>Open the brief Google Doc.</li>
+          <li>For each creative row in the doc:
+            <ul>
+              <li>Click <strong>📋 Copy</strong> next to the corresponding name in PM Tools (it auto-checks "filled" so you can track progress).</li>
+              <li>Switch to the Google Doc → click in the <em>File Name</em> (or <em>Name</em>) cell of that creative table → paste.</li>
+            </ul>
+          </li>
+          <li>When all rows are checked, the brief is complete.</li>
+        </ol>
+      </section>
+
+      <section id="step7" class="sop-section">
+        <h2><span class="sop-step-num">7</span> Move Google Doc to client folder</h2>
+        <p class="sop-role-tag">Project Manager</p>
+        <ol class="sop-steps">
+          <li>In the brief Google Doc, click the folder icon next to the title (or <strong>File → Move</strong>).</li>
+          <li>Move it to the client's profile folder in Drive (<em>Clients → {Client Name} → Briefs</em> or wherever your team's convention is).</li>
+          <li>Update the ClickUp task to reflect the brief is now in the canonical location.</li>
+        </ol>
+      </section>
+
+      <section id="tips" class="sop-section">
+        <h2>Tips & gotchas</h2>
+        <ul>
+          <li><strong>Adding a new client:</strong> In Briefgen, click <em>+ Add client</em> in the top-right. You'll be prompted for a client name and (optionally) the Creative Tracker URL. The new client persists in your browser only — to share with teammates, edit <code>clients.json</code> in the repo and push.</li>
+          <li><strong>Setting a tracker URL on an existing client:</strong> Pick the client in Briefgen → click <em>+ Tracker URL</em> (or <em>Tracker URL ✓</em> to edit) → paste the Google Sheets URL. PM Tools will pick this up automatically next time you open it.</li>
+          <li><strong>Status, Platform, Copy Name, CPID, Variation Name (body copy)</strong> are <em>always</em> left blank in tracker output. The tracker has formulas / dropdowns that handle these. Don't fill them manually unless you know the convention for your client.</li>
+          <li><strong>The "Lead" → "Hook" remap</strong> applies to Static and Video Variation Type only. Body Copy variation types (Lead, Body, CTA, Full) match the tracker dropdown 1:1.</li>
+          <li><strong>"Lead Type" normalization:</strong> Brief values like "Story Lead 3" are normalized to just "Story" for the tracker. Strip variation numbers, strip trailing " Lead", case-correct.</li>
+          <li><strong>Multi-line text in cells:</strong> Newlines inside a brief cell (like a multi-paragraph Body Copy) are converted to spaces in tracker TSV output, since Google Sheets interprets newlines as new rows on paste.</li>
+          <li><strong>Hard-refresh after a deploy:</strong> If you don't see a new feature, press <code>Cmd+Shift+R</code> — GitHub Pages caches HTML aggressively.</li>
+        </ul>
+      </section>
+
+      <footer class="sop-footer">
+        Maintained alongside <a href="https://github.com/marcuswest-lab/brief-gen" target="_blank" rel="noopener">marcuswest-lab/brief-gen</a> on GitHub. Suggest changes by editing <code>sop/index.html</code>.
+      </footer>
+    </article>
+  </main>
+
+</body>
+</html>

@@ -3,9 +3,73 @@
     {
       "id": "vam",
       "name": "Value Added Moving",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/107vn14HpFXmJ7BK1WMdYAF_c53vM9MRyC23ii6ePHPQ/edit?gid=958865688#gid=958865688",
       "defaults": {
         "Copywriter": "Nate",
         "Conversion Objective": "Lead",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "case-source",
+      "name": "Case Source",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1ik6Jnp2e4D9IjuwwZNcXkDSAFKaGPEYF66-QmslJYu8/edit?gid=42655959#gid=42655959",
+      "defaults": {
+        "Copywriter": "Nate",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "ceo-lawyer",
+      "name": "CEO Lawyer",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/192SiiUSS9LavmDD2wm7srBRrfAugj4W-rTxermsZ6rw/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Copywriter": "Nate",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "tcc",
+      "name": "TCC",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1yrqdGeMiBpx8IIqdAs7whecAJ8k6UuPx03SIbmKKtOA/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Copywriter": "Nate",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "nurse-coach",
+      "name": "Nurse Coach",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1fLOI9vy87pit46rZnly4AriQQt0LQ_kL10fv5t2I8GU/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Copywriter": "Nate",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "trusy",
+      "name": "Trusy",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1hRxkYZ6VKlZItBimLeAJ8iLtSoIjokyCetqxMh6xil0/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Copywriter": "Nate",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "dan-henry",
+      "name": "Dan Henry",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1GgTxgf-6H1Z3jIvk6qNErpIJ2a58TvfQToQqdhxH6as/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Copywriter": "Nate Weeks",
+        "Ad Platform": "Meta"
+      }
+    },
+    {
+      "id": "quintessa",
+      "name": "Quintessa",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1_EmN7R3AEe50xJINFxMrbxtAaalgEIOW6FX7vFaAN7s/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Copywriter": "Nate Weeks",
         "Ad Platform": "Meta"
       }
     }

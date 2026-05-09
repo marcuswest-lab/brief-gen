@@ -199,6 +199,18 @@ function renderClientPicker() {
     class: 'btn-secondary btn-small',
     onclick: handleAddClient,
   }, '+ Add client'));
+
+  // Tracker URL edit (used by the PM app — kept here so a copywriter who
+  // adds a new client can also set its tracker URL once)
+  const currentClient = getCurrentClient();
+  if (currentClient) {
+    clientRow.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-secondary btn-small',
+      onclick: () => handleEditTrackerUrl(currentClient),
+      title: 'Set or edit this client\'s Creative Tracker URL (used by PM Tools)',
+    }, currentClient.tracker_url ? 'Tracker URL ✓' : '+ Tracker URL'));
+  }
   wrap.appendChild(clientRow);
 
   // -- Preset row --
@@ -259,14 +271,62 @@ function renderClientPicker() {
 function handleAddClient() {
   const name = prompt('Client name (e.g. "TCC", "CEO Lawyer"):');
   if (!name || !name.trim()) return;
+  const trackerUrl = prompt('Creative Tracker Google Sheet URL (optional — leave blank to skip):') || '';
   const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36);
   const newClient = { id, name: name.trim(), defaults: {}, __local: true };
+  if (trackerUrl.trim()) newClient.tracker_url = trackerUrl.trim();
   state.clients.push(newClient);
   state.clientId = id;
   saveLocalClients();
   saveState();
   renderClientPicker();
   renderForm();
+}
+
+function handleEditTrackerUrl(client) {
+  const current = client.tracker_url || '';
+  const next = prompt(`Creative Tracker URL for ${client.name}:\n\n(Leave blank to clear.)`, current);
+  if (next === null) return; // user cancelled
+  if (next.trim()) {
+    client.tracker_url = next.trim();
+  } else {
+    delete client.tracker_url;
+  }
+  // Persist: built-in clients are overridden in the local clients store using a
+  // per-client URL override map so we don't lose customizations on page reload.
+  if (client.__local) {
+    saveLocalClients();
+  } else {
+    // Built-in client: stash the URL override separately
+    saveTrackerUrlOverride(client.id, client.tracker_url);
+  }
+  renderClientPicker();
+}
+
+const TRACKER_URL_OVERRIDES_KEY = 'pbg.trackerUrlOverrides.v1';
+
+function loadTrackerUrlOverrides() {
+  try {
+    const raw = localStorage.getItem(TRACKER_URL_OVERRIDES_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveTrackerUrlOverride(clientId, url) {
+  const overrides = loadTrackerUrlOverrides();
+  if (url) overrides[clientId] = url;
+  else delete overrides[clientId];
+  localStorage.setItem(TRACKER_URL_OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
+function applyTrackerUrlOverrides() {
+  const overrides = loadTrackerUrlOverrides();
+  for (const c of state.clients) {
+    if (overrides[c.id]) c.tracker_url = overrides[c.id];
+  }
 }
 
 // -------- Preset handlers --------
@@ -764,6 +824,7 @@ async function init() {
   loadState();
   loadPresets();
   await loadClients();
+  applyTrackerUrlOverrides();
   applyClientDefaults();
 
   renderClientPicker();

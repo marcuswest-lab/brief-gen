@@ -143,6 +143,39 @@
   color: #234;
 }
 
+.pm-tracker-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #f5f9ff 0%, #e9f1ff 100%);
+  border: 1px solid #b8d4ff;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #234;
+}
+
+.pm-tracker-banner-text {
+  flex: 1;
+  line-height: 1.55;
+}
+
+.pm-tracker-banner-text strong {
+  font-size: 14px;
+  color: #0a3d91;
+}
+
+.pm-tracker-btn {
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.pm-tracker-btn:hover {
+  text-decoration: none;
+}
+
 .pm-block {
   margin-bottom: 22px;
   border: 1px solid var(--border);

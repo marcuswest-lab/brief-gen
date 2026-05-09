@@ -5,6 +5,8 @@ import { mapBriefToTracker, blockToTSV } from './lib/tracker-mapper.js';
 import { TRACKERS } from './lib/tracker-config.js';
 
 const STORAGE_KEY = 'pbg.pm.state.v1';
+const CLIENTS_STORAGE_KEY = 'pbg.localClients.v1';
+const TRACKER_URL_OVERRIDES_KEY = 'pbg.trackerUrlOverrides.v1';
 
 const state = {
   tab: 'brief-to-tracker',  // | 'tracker-to-brief'
@@ -12,6 +14,8 @@ const state = {
   briefText: '',
   requestDoc: '',
   briefTypeOverride: '',  // '' = auto-detect
+  clientId: null,          // selected client (for tracker URL)
+  clients: [],             // loaded from clients.json + localStorage
   result: null,            // mapBriefToTracker output
   // Tracker → Brief
   trackerNames: '',
@@ -27,6 +31,7 @@ function saveState() {
       briefText: state.briefText,
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride,
+      clientId: state.clientId,
       trackerNames: state.trackerNames,
       filledStates: state.filledStates,
     }));
@@ -45,6 +50,71 @@ function loadState() {
   } catch (e) {
     console.warn('Load failed:', e);
   }
+}
+
+async function loadClients() {
+  let builtin = [];
+  try {
+    const res = await fetch('../clients.json');
+    if (res.ok) {
+      const data = await res.json();
+      builtin = data.clients || [];
+    }
+  } catch (e) {
+    console.warn('clients.json load failed:', e);
+  }
+  let local = [];
+  try {
+    const raw = localStorage.getItem(CLIENTS_STORAGE_KEY);
+    if (raw) local = JSON.parse(raw) || [];
+  } catch (e) {
+    console.warn('Local clients load failed:', e);
+  }
+  state.clients = [...builtin, ...local];
+
+  // Apply tracker URL overrides (set in Briefgen)
+  try {
+    const raw = localStorage.getItem(TRACKER_URL_OVERRIDES_KEY);
+    if (raw) {
+      const overrides = JSON.parse(raw) || {};
+      for (const c of state.clients) {
+        if (overrides[c.id]) c.tracker_url = overrides[c.id];
+      }
+    }
+  } catch (e) {}
+
+  if (!state.clientId && state.clients.length > 0) {
+    state.clientId = state.clients[0].id;
+  }
+}
+
+function getCurrentClient() {
+  return state.clients.find(c => c.id === state.clientId) || null;
+}
+
+/**
+ * Extract the client name from a brief header line like:
+ *   "Static Ad Brief for Value Added Moving Quiet Overwhelm | 05-08-2026"
+ *   "Body Copy Brief for Dan Henry | Followers Aren't Buyers | 05-08-2026"
+ *   "Video Brief for TCC Done For You | 05-08-2026"
+ * The format is: "{Type} Brief for {CLIENT}{some separator + rest}"
+ * We compare against the known client names list to identify the match.
+ */
+function detectClientFromBrief(text) {
+  if (!text || state.clients.length === 0) return null;
+  const firstLine = (text.split('\n').find(l => l.trim()) || '').trim();
+  // The header looks like "{Something} Brief for {ClientName}{...}"
+  const m = firstLine.match(/Brief for\s+(.+)$/i);
+  if (!m) return null;
+  const after = m[1];
+  // Try matching each known client name as a prefix (case-insensitive)
+  // Sort longest-first so "Value Added Moving" beats a hypothetical "Value"
+  const sorted = [...state.clients].sort((a, b) => b.name.length - a.name.length);
+  for (const c of sorted) {
+    const cn = c.name.toLowerCase();
+    if (after.toLowerCase().startsWith(cn)) return c;
+  }
+  return null;
 }
 
 // -------- DOM helpers --------
@@ -232,10 +302,33 @@ function renderResultPanel(result) {
   const card = el('div', { class: 'card pm-result' });
   card.appendChild(el('h2', {}, `${result.trackerLabel} — ${result.variationCount} row${result.variationCount === 1 ? '' : 's'}`));
 
-  card.appendChild(el('p', { class: 'pm-banner' },
-    `Open your client's tracker, go to the `, el('strong', {}, result.trackerLabel),
-    ` tab, click the next empty row, then paste each block at the correct starting column.`,
-  ));
+  // Detect client + show tracker link if we have one
+  const detectedClient = detectClientFromBrief(state.briefText);
+  if (detectedClient && detectedClient.tracker_url) {
+    const banner = el('div', { class: 'pm-tracker-banner' });
+    banner.appendChild(el('div', { class: 'pm-tracker-banner-text' },
+      el('strong', {}, `Detected client: ${detectedClient.name}`),
+      el('br'),
+      `Open the tracker → ${result.trackerLabel} tab → click the next empty row → paste each block at the correct starting column.`,
+    ));
+    banner.appendChild(el('a', {
+      href: detectedClient.tracker_url,
+      target: '_blank',
+      rel: 'noopener',
+      class: 'btn-primary btn-small pm-tracker-btn',
+    }, `📊 Open ${detectedClient.name} Tracker ↗`));
+    card.appendChild(banner);
+  } else if (detectedClient) {
+    card.appendChild(el('p', { class: 'pm-banner' },
+      `Detected client: `, el('strong', {}, detectedClient.name),
+      `. No tracker URL on file — add one in Briefgen (Edit URL button next to the client picker). Then paste each block at the correct starting column.`,
+    ));
+  } else {
+    card.appendChild(el('p', { class: 'pm-banner' },
+      `Open your client's tracker, go to the `, el('strong', {}, result.trackerLabel),
+      ` tab, click the next empty row, then paste each block at the correct starting column.`,
+    ));
+  }
 
   // Block 1
   card.appendChild(renderBlockPanel('Block 1', result.block1, `Paste at column ${result.block1.startCol}`));
@@ -428,8 +521,9 @@ function renderAll() {
 
 // -------- Init --------
 
-function init() {
+async function init() {
   loadState();
+  await loadClients();
   renderAll();
 }
 
