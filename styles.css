@@ -52,6 +52,21 @@ html, body {
   margin-top: 2px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.header-link:hover {
+  text-decoration: none;
+}
+
 .client-picker {
   display: flex;
   flex-direction: column;
