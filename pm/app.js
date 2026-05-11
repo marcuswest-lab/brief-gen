@@ -3,7 +3,7 @@
 import { parseBrief, detectBriefType } from './lib/brief-parser.js';
 import { mapBriefToTracker, blockToTSV } from './lib/tracker-mapper.js';
 import { TRACKERS } from './lib/tracker-config.js';
-import { loadBriefs, getBrief, upsertBrief, sortBriefsRecent } from '../lib/brief-store.js';
+import { loadBriefs, getBrief, upsertBrief, sortBriefsRecent, briefDisplayLabel } from '../lib/brief-store.js';
 import { TEMPLATES } from '../lib/templates-config.js';
 import { generateBrief } from '../lib/docx-filler.js';
 
@@ -229,10 +229,7 @@ function renderBriefToTracker() {
       });
       sel.appendChild(el('option', { value: '' }, '— pick a brief —'));
       for (const b of savedBriefs) {
-        const type = b.briefType === 'copy' ? 'Body Copy' : (b.briefType[0].toUpperCase() + b.briefType.slice(1));
-        const dt = new Date(b.updatedAt || b.createdAt).toLocaleDateString();
-        const opt = el('option', { value: b.id },
-          `${b.clientName} — ${type} — ${b.ideaName || '(untitled)'} — ${dt}`);
+        const opt = el('option', { value: b.id }, briefDisplayLabel(b));
         if (b.id === state.selectedBriefId) opt.setAttribute('selected', '');
         sel.appendChild(opt);
       }
@@ -549,10 +546,8 @@ function renderTrackerToBrief() {
     });
     sel.appendChild(el('option', { value: '' }, '— pick the saved brief —'));
     for (const b of savedBriefs) {
-      const type = b.briefType === 'copy' ? 'Body Copy' : (b.briefType[0].toUpperCase() + b.briefType.slice(1));
-      const dt = new Date(b.updatedAt || b.createdAt).toLocaleDateString();
       const opt = el('option', { value: b.id },
-        `${b.clientName} — ${type} — ${b.ideaName || '(untitled)'} — ${dt} — ${b.creatives.length} creative${b.creatives.length === 1 ? '' : 's'}`);
+        `${briefDisplayLabel(b)} — ${b.creatives.length} creative${b.creatives.length === 1 ? '' : 's'}`);
       if (b.id === state.trackerToBriefBriefId) opt.setAttribute('selected', '');
       sel.appendChild(opt);
     }

@@ -246,7 +246,7 @@ function renderClientPicker() {
     if (loadedBrief) {
       const editingRow = el('div', { class: 'picker-row editing-row' });
       editingRow.appendChild(el('span', { class: 'editing-tag' },
-        `Editing saved brief: ${loadedBrief.ideaName || '(untitled)'} (${loadedBrief.briefType})`,
+        `Editing: ${briefDisplayLabel(loadedBrief)}`,
       ));
       editingRow.appendChild(el('button', {
         type: 'button',
@@ -302,8 +302,19 @@ function renderClientPicker() {
     type: 'button',
     class: 'btn-secondary btn-small',
     onclick: handleSavePreset,
-    title: 'Save current overview field values as a preset for this client',
-  }, '+ Save preset'));
+    title: 'Snapshot the current overview field values as a NEW preset for this client',
+  }, '+ Save new preset'));
+
+  // Update button — only when a preset is currently active
+  if (activeStillValid) {
+    const activePreset = presets.find(p => p.id === activePresetId);
+    presetRow.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-secondary btn-small',
+      onclick: () => handleUpdatePreset(activePreset),
+      title: `Overwrite "${activePreset.name}" with the current overview field values`,
+    }, 'Update preset'));
+  }
 
   if (presets.length > 0) {
     presetRow.appendChild(el('button', {
@@ -527,6 +538,47 @@ function handleSavePreset() {
   }
   savePresets();
   renderClientPicker();
+}
+
+function handleUpdatePreset(preset) {
+  const client = getCurrentClient();
+  if (!client || !preset) return;
+
+  // Snapshot the current overview fields
+  const overview = state.forms[state.briefType].overview;
+  const values = {};
+  for (const [k, v] of Object.entries(overview)) {
+    if (v != null && String(v).trim() !== '') values[k] = v;
+  }
+  if (Object.keys(values).length === 0) {
+    alert('No overview fields are filled in. Nothing to save into the preset.');
+    return;
+  }
+
+  if (!confirm(`Overwrite preset "${preset.name}" with the current overview field values?\n\nFields to save:\n${Object.keys(values).join(', ')}`)) {
+    return;
+  }
+
+  // Find + replace by id
+  const list = state.presets[client.id] || [];
+  const idx = list.findIndex(p => p.id === preset.id);
+  if (idx >= 0) {
+    list[idx] = { ...preset, values };
+    savePresets();
+    renderClientPicker();
+
+    const status = document.getElementById('status');
+    if (status) {
+      status.className = 'success';
+      status.textContent = `Updated preset "${preset.name}" — ${Object.keys(values).length} field${Object.keys(values).length === 1 ? '' : 's'} saved.`;
+      setTimeout(() => {
+        if (status.textContent.startsWith('Updated preset')) {
+          status.textContent = '';
+          status.className = '';
+        }
+      }, 4000);
+    }
+  }
 }
 
 function handleApplyPreset(presetId) {
@@ -969,6 +1021,7 @@ async function handleGenerate() {
       clientName: client.name,
       briefType: state.briefType,
       ideaName: ov['Idea Name'] || '',
+      angleName: ov['Angle Name'] || '',
       overview: { ...ov },
       creatives: creatives.map(c => ({ ...c })),
     });
@@ -1027,11 +1080,11 @@ function handleOpenMyBriefs() {
 
       const label = el('div', { class: 'briefs-label' });
       label.appendChild(el('div', { class: 'briefs-label-main' },
-        `${brief.clientName} — ${brief.briefType === 'copy' ? 'Body Copy' : (brief.briefType[0].toUpperCase() + brief.briefType.slice(1))}`,
+        briefDisplayLabel(brief),
         isCurrent ? el('span', { class: 'briefs-current-tag' }, 'editing') : null,
       ));
       label.appendChild(el('div', { class: 'briefs-label-sub' },
-        `${brief.ideaName || '(untitled)'} · ${brief.creatives.length} creative${brief.creatives.length === 1 ? '' : 's'} · ${new Date(brief.updatedAt || brief.createdAt).toLocaleString()}`,
+        `${brief.creatives.length} creative${brief.creatives.length === 1 ? '' : 's'} · last edited ${new Date(brief.updatedAt || brief.createdAt).toLocaleString()}`,
       ));
       item.appendChild(label);
 
