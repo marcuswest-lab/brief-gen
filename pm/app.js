@@ -424,6 +424,7 @@ function handleGenerateRows() {
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride || undefined,
       clientTrackerOverrides: detectedClient?.tracker_overrides,
+      clientFolderUrl: detectedClient?.creative_folder_url,
     });
     if (result.variationCount === 0) {
       flashStatus('No variations found. Check that the brief has filled creative tables.', 'error');

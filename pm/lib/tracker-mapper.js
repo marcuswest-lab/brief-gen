@@ -33,6 +33,7 @@ export function mapBriefToTracker(brief, options = {}) {
     overview: brief.overview || {},
     variations: brief.variations || [],
     requestDoc: options.requestDoc || '',
+    clientFolderUrl: options.clientFolderUrl || '',
   };
 
   const buildBlock = (blockCfg) => {
@@ -73,8 +74,21 @@ function resolveFieldValue(field, variation, ctx) {
 
 function resolveSource(source, variation, ctx) {
   if (!source || source === 'blank') return '';
+
+  // Check fallback chain BEFORE prefix branches: 'overview:Photo Folder|fallback:clientFolderUrl'
+  // tries the primary, then the fallback if the primary is empty.
+  if (source.includes('|fallback:')) {
+    const idx = source.indexOf('|fallback:');
+    const primary = source.slice(0, idx);
+    const fallbackPart = source.slice(idx + '|fallback:'.length);
+    const primaryVal = resolveSource(primary, variation, ctx);
+    if (primaryVal) return primaryVal;
+    return resolveSource(fallbackPart, variation, ctx);
+  }
+
   if (source === 'today') return ctx.today;
   if (source === 'requestDoc') return ctx.requestDoc;
+  if (source === 'clientFolderUrl') return ctx.clientFolderUrl;
 
   if (source.startsWith('literal:')) {
     return source.slice('literal:'.length);

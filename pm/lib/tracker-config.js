@@ -31,7 +31,7 @@ export const TRACKERS = {
         { col: 'K', label: 'Variation Type',       source: 'variation:Variation Type', transform: 'staticVariationType', note: "Variation Type: brief 'Lead' → tracker 'Hook'. Brief 'Visual'/'Copy' don't map (left blank)." },
         { col: 'L', label: 'CID',                  source: 'computed:cid' },
         { col: 'M', label: 'Request Doc',          source: 'requestDoc' },
-        { col: 'N', label: 'Folder Link',          source: 'overview:Photo Folder' },
+        { col: 'N', label: 'Folder Link',          source: 'overview:Photo Folder|fallback:clientFolderUrl' },
       ],
     },
     block2: {
@@ -65,7 +65,7 @@ export const TRACKERS = {
         { col: 'J', label: 'Variation Type',      source: 'variation:Variation Type', transform: 'videoVariationType', note: "Variation Type: brief 'Lead' → tracker 'Hook'." },
         { col: 'K', label: 'CID',                 source: 'computed:cid' },
         { col: 'L', label: 'Request Doc',         source: 'requestDoc' },
-        { col: 'M', label: 'Folder Link',         source: 'overview:Footage Folder' },
+        { col: 'M', label: 'Folder Link',         source: 'overview:Footage Folder|fallback:clientFolderUrl' },
       ],
     },
     block2: {
@@ -101,7 +101,7 @@ export const TRACKERS = {
         { col: 'K', label: 'Variation Type', source: 'variation:Variation Type' },
         { col: 'L', label: 'CPID',          source: 'blank', note: 'CPID (col L) left blank — tracker formula auto-generates.' },
         { col: 'M', label: 'Request Doc',   source: 'requestDoc' },
-        { col: 'N', label: 'Folder Link',   source: 'blank' },
+        { col: 'N', label: 'Folder Link',   source: 'clientFolderUrl' },
       ],
     },
     block2: {
