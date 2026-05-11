@@ -143,15 +143,27 @@ function getCurrentClient() {
 }
 
 function applyClientDefaults() {
-  // Pre-fill empty overview fields with the current client's defaults
-  // for the current brief type. Doesn't overwrite existing user values.
-  const client = getCurrentClient();
-  if (!client || !client.defaults) return;
+  // Pre-fill empty overview fields. Two layers, both leave user values alone:
+  //   1. Template-level defaults (e.g. video Ratio Format(s) → "9:16 (Story/Reel)")
+  //   2. Client-level defaults from clients.json
+  // Client defaults can override template defaults if both target the same field.
   const config = TEMPLATES[state.briefType];
   const ov = state.forms[state.briefType].overview;
+
+  // Template defaults
   for (const def of config.overview) {
-    if (client.defaults[def.field] != null && (ov[def.field] == null || ov[def.field] === '')) {
-      ov[def.field] = client.defaults[def.field];
+    if (def.default != null && (ov[def.field] == null || ov[def.field] === '')) {
+      ov[def.field] = def.default;
+    }
+  }
+
+  // Client defaults
+  const client = getCurrentClient();
+  if (client && client.defaults) {
+    for (const def of config.overview) {
+      if (client.defaults[def.field] != null && (ov[def.field] == null || ov[def.field] === '')) {
+        ov[def.field] = client.defaults[def.field];
+      }
     }
   }
 }
