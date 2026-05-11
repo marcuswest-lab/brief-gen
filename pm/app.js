@@ -208,6 +208,9 @@ function renderBriefToTracker() {
     state.briefSource = 'paste';
   }
 
+  // Client selector card (always visible at top)
+  wrap.appendChild(renderClientSelectorCard());
+
   const card = el('div', { class: 'card' });
   card.appendChild(el('h2', {}, 'Choose a brief'));
 
@@ -327,6 +330,87 @@ function renderBriefToTracker() {
 }
 
 /**
+ * Top-level client selector card for Brief→Tracker. Sets the active client
+ * for tracker overrides + folder URL. Surfaces the Open Tracker button
+ * upfront so PMs can jump to the spreadsheet without generating first.
+ */
+function renderClientSelectorCard() {
+  const card = el('div', { class: 'card pm-client-card' });
+  card.appendChild(el('h2', {}, 'Client'));
+
+  const row = el('div', { class: 'pm-client-row' });
+  const sel = el('select', {
+    id: 'pm-client-select',
+    class: 'pm-client-select',
+    onchange: (e) => {
+      state.clientId = e.target.value || null;
+      saveState();
+      renderBriefToTracker();
+    },
+  });
+  sel.appendChild(el('option', { value: '' }, '— auto-detect from brief —'));
+  for (const c of state.clients) {
+    const opt = el('option', { value: c.id }, c.name);
+    if (c.id === state.clientId) opt.setAttribute('selected', '');
+    sel.appendChild(opt);
+  }
+  row.appendChild(sel);
+
+  // Resolve the effective client (explicit selection wins over auto-detect)
+  const effectiveClient = getEffectiveClient();
+
+  if (effectiveClient && effectiveClient.tracker_url) {
+    row.appendChild(el('a', {
+      href: effectiveClient.tracker_url,
+      target: '_blank',
+      rel: 'noopener',
+      class: 'btn-primary btn-small tracker-open-btn',
+      title: `Open ${effectiveClient.name}'s Creative Tracker`,
+    }, `📊 Open ${effectiveClient.name} Tracker ↗`));
+  } else if (effectiveClient && !effectiveClient.tracker_url) {
+    row.appendChild(el('span', { class: 'pm-no-tracker' },
+      `No tracker URL for ${effectiveClient.name}. Set one in Briefgen.`));
+  }
+  card.appendChild(row);
+
+  // Show whether client was auto-detected or explicit
+  if (!state.clientId && effectiveClient) {
+    card.appendChild(el('div', { class: 'pm-detect' },
+      `Auto-detected: `, el('strong', {}, effectiveClient.name),
+      ` (override above if wrong)`));
+  } else if (!state.clientId && !effectiveClient) {
+    card.appendChild(el('div', { class: 'pm-detect pm-detect-empty' },
+      'Pick a client above, or it will auto-detect when you pick/paste a brief.'));
+  }
+
+  return card;
+}
+
+/**
+ * Get the active client for tracker generation. Priority:
+ *   1. Explicit selection in the client picker (state.clientId)
+ *   2. Saved brief's clientId (when 'saved' source)
+ *   3. Detected from brief paste header (when 'paste' source)
+ */
+function getEffectiveClient() {
+  if (state.clientId) {
+    return state.clients.find(c => c.id === state.clientId) || null;
+  }
+  if (state.briefSource === 'saved' && state.selectedBriefId) {
+    const stored = getBrief(state.selectedBriefId);
+    if (stored) {
+      return state.clients.find(c => c.id === stored.clientId)
+        || state.clients.find(c => c.name === stored.clientName)
+        || null;
+    }
+  }
+  if (state.briefSource === 'paste' && state.briefText) {
+    return detectClientFromBrief(state.briefText);
+  }
+  return null;
+}
+
+/**
  * Render a small client filter dropdown that narrows a brief picker to one
  * client. `stateKey` is the field name on `state` to read/write (e.g.
  * 'briefFilterClientId'). `briefs` is the source list (used to derive which
@@ -392,7 +476,6 @@ function handleClearBrief() {
 function handleGenerateRows() {
   try {
     let parsedBrief = null;
-    let detectedClient = null;
 
     if (state.briefSource === 'saved') {
       if (!state.selectedBriefId) {
@@ -409,22 +492,22 @@ function handleGenerateRows() {
         overview: stored.overview,
         variations: stored.creatives,
       };
-      detectedClient = state.clients.find(c => c.id === stored.clientId)
-        || state.clients.find(c => c.name === stored.clientName);
     } else {
       if (!state.briefText.trim()) {
         flashStatus('Paste a brief first.', 'error');
         return;
       }
       parsedBrief = parseBrief(state.briefText);
-      detectedClient = detectClientFromBrief(state.briefText);
     }
+
+    // Effective client: explicit selection wins; otherwise infer from brief
+    const effectiveClient = getEffectiveClient();
 
     const result = mapBriefToTracker(parsedBrief, {
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride || undefined,
-      clientTrackerOverrides: detectedClient?.tracker_overrides,
-      clientFolderUrl: detectedClient?.creative_folder_url,
+      clientTrackerOverrides: effectiveClient?.tracker_overrides,
+      clientFolderUrl: effectiveClient?.creative_folder_url,
     });
     if (result.variationCount === 0) {
       flashStatus('No variations found. Check that the brief has filled creative tables.', 'error');
@@ -443,19 +526,7 @@ function renderResultPanel(result) {
   const card = el('div', { class: 'card pm-result' });
   card.appendChild(el('h2', {}, `${result.trackerLabel} — ${result.variationCount} row${result.variationCount === 1 ? '' : 's'}`));
 
-  // Detect client: from selected saved brief if available, else from pasted text
-  let detectedClient = null;
-  if (state.briefSource === 'saved' && state.selectedBriefId) {
-    const stored = getBrief(state.selectedBriefId);
-    if (stored) {
-      detectedClient = state.clients.find(c => c.id === stored.clientId)
-        || state.clients.find(c => c.name === stored.clientName)
-        || null;
-    }
-  }
-  if (!detectedClient) {
-    detectedClient = detectClientFromBrief(state.briefText);
-  }
+  const detectedClient = getEffectiveClient();
   if (detectedClient && detectedClient.tracker_url) {
     const banner = el('div', { class: 'pm-tracker-banner' });
     banner.appendChild(el('div', { class: 'pm-tracker-banner-text' },

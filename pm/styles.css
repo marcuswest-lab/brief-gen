@@ -71,6 +71,46 @@
   margin-bottom: 10px;
 }
 
+.pm-client-card h2 {
+  margin-bottom: 12px;
+}
+
+.pm-client-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pm-client-select {
+  flex: 1;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  font-family: inherit;
+}
+
+.pm-client-select:focus {
+  outline: none;
+  border-color: #888;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+.pm-no-tracker {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.tracker-open-btn {
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+
 .pm-client-filter {
   display: flex;
   align-items: center;
