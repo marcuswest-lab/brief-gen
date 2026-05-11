@@ -403,19 +403,37 @@ html, body {
   background: var(--card);
 }
 
-.app-footer .footer-sep {
-  margin: 0 8px;
-  color: #ccc;
+.app-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
-.app-footer .footer-link {
-  color: var(--text);
-  text-decoration: none;
-  font-weight: 500;
+.footer-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
-.app-footer .footer-link:hover {
-  text-decoration: underline;
+.footer-nav-link {
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+
+.footer-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tracker-open-btn {
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+
+.tracker-edit-btn {
+  padding: 6px 8px !important;
+  font-size: 12px !important;
 }
 
 /* -------- Modal (preset manager) -------- */

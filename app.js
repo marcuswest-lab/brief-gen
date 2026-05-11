@@ -226,16 +226,32 @@ function renderClientPicker() {
     }, `Manage (${localClients.length})`));
   }
 
-  // Tracker URL edit (used by the PM app — kept here so a copywriter who
-  // adds a new client can also set its tracker URL once)
+  // Tracker controls: when the client has a URL, show a one-click "Open
+  // Tracker" link button + a small ✏️ to edit. Otherwise just show "+ Tracker URL".
   const currentClient = getCurrentClient();
   if (currentClient) {
-    clientRow.appendChild(el('button', {
-      type: 'button',
-      class: 'btn-secondary btn-small',
-      onclick: () => handleEditTrackerUrl(currentClient),
-      title: 'Set or edit this client\'s Creative Tracker URL (used by PM Tools)',
-    }, currentClient.tracker_url ? 'Tracker URL ✓' : '+ Tracker URL'));
+    if (currentClient.tracker_url) {
+      clientRow.appendChild(el('a', {
+        href: currentClient.tracker_url,
+        target: '_blank',
+        rel: 'noopener',
+        class: 'btn-primary btn-small tracker-open-btn',
+        title: `Open ${currentClient.name} Creative Tracker in a new tab`,
+      }, 'Open Tracker ↗'));
+      clientRow.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small tracker-edit-btn',
+        onclick: () => handleEditTrackerUrl(currentClient),
+        title: 'Edit Creative Tracker URL',
+      }, '✏️'));
+    } else {
+      clientRow.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        onclick: () => handleEditTrackerUrl(currentClient),
+        title: 'Set this client\'s Creative Tracker URL',
+      }, '+ Tracker URL'));
+    }
   }
   wrap.appendChild(clientRow);
 
