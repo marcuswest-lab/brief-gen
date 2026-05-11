@@ -215,6 +215,17 @@ function renderClientPicker() {
     onclick: handleAddClient,
   }, '+ Add client'));
 
+  // Manage button — only show when there are user-added clients to clean up
+  const localClients = state.clients.filter(c => c.__local);
+  if (localClients.length > 0) {
+    clientRow.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-secondary btn-small',
+      onclick: handleManageClients,
+      title: 'Delete user-added clients (e.g. duplicates of built-in clients)',
+    }, `Manage (${localClients.length})`));
+  }
+
   // Tracker URL edit (used by the PM app — kept here so a copywriter who
   // adds a new client can also set its tracker URL once)
   const currentClient = getCurrentClient();
@@ -319,6 +330,119 @@ function handleAddClient() {
   saveState();
   renderClientPicker();
   renderForm();
+}
+
+function handleManageClients() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  const renderList = () => {
+    listEl.innerHTML = '';
+    const builtinNames = new Set(state.clients.filter(c => !c.__local).map(c => c.name.toLowerCase()));
+    const localClients = state.clients.filter(c => c.__local);
+
+    if (localClients.length === 0) {
+      listEl.appendChild(el('div', { class: 'pm-empty' },
+        'No user-added clients. The list comes entirely from clients.json.'
+      ));
+      return;
+    }
+
+    for (const client of localClients) {
+      const isDupe = builtinNames.has(client.name.toLowerCase());
+      const item = el('div', { class: 'pm-item briefs-item' + (isDupe ? ' briefs-item-dupe' : '') });
+
+      const label = el('div', { class: 'briefs-label' });
+      label.appendChild(el('div', { class: 'briefs-label-main' },
+        client.name,
+        isDupe ? el('span', { class: 'briefs-current-tag dupe-tag' }, 'duplicate') : null,
+      ));
+      label.appendChild(el('div', { class: 'briefs-label-sub' },
+        client.tracker_url ? `tracker: ${client.tracker_url.slice(0, 60)}…` : 'no tracker URL',
+      ));
+      item.appendChild(label);
+
+      item.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small pm-delete',
+        onclick: () => {
+          if (!confirm(`Delete user-added client "${client.name}"?\n\nIf there's a built-in client with the same name in clients.json, it will still be available.`)) return;
+          // Remove from state
+          const idx = state.clients.findIndex(c => c.id === client.id);
+          if (idx >= 0) state.clients.splice(idx, 1);
+          // If this was the selected client, fall back to the first available
+          if (state.clientId === client.id) {
+            state.clientId = state.clients[0]?.id || null;
+            applyClientDefaults();
+          }
+          saveLocalClients();
+          saveState();
+          renderClientPicker();
+          renderForm();
+          renderList();
+        },
+      }, 'Delete'));
+
+      listEl.appendChild(item);
+    }
+
+    if (localClients.some(c => builtinNames.has(c.name.toLowerCase()))) {
+      const removeAllDupesBtn = el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        style: 'margin-top: 12px;',
+        onclick: () => {
+          const dupes = localClients.filter(c => builtinNames.has(c.name.toLowerCase()));
+          if (!confirm(`Delete all ${dupes.length} duplicate(s)?\n\n${dupes.map(c => '• ' + c.name).join('\n')}`)) return;
+          for (const dupe of dupes) {
+            const idx = state.clients.findIndex(c => c.id === dupe.id);
+            if (idx >= 0) state.clients.splice(idx, 1);
+            if (state.clientId === dupe.id) {
+              state.clientId = state.clients[0]?.id || null;
+              applyClientDefaults();
+            }
+          }
+          saveLocalClients();
+          saveState();
+          renderClientPicker();
+          renderForm();
+          renderList();
+        },
+      }, 'Remove all duplicates');
+      listEl.appendChild(removeAllDupesBtn);
+    }
+  };
+
+  const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) close(); } });
+  const dialog = el('div', { class: 'modal-dialog briefs-dialog' });
+
+  dialog.appendChild(el('div', { class: 'modal-header' },
+    el('h2', {}, 'Manage clients'),
+    el('button', { type: 'button', class: 'modal-close', onclick: close, title: 'Close' }, '×'),
+  ));
+
+  const body = el('div', { class: 'modal-body' });
+  body.appendChild(el('p', { class: 'modal-hint' },
+    'Built-in clients (from clients.json) are not shown here — they can\'t be deleted from the app. Only user-added clients (saved to your browser) are listed below.'
+  ));
+  const listEl = el('div', { class: 'pm-list' });
+  body.appendChild(listEl);
+  dialog.appendChild(body);
+
+  dialog.appendChild(el('div', { class: 'modal-footer' },
+    el('button', { type: 'button', class: 'btn-primary', onclick: close }, 'Done'),
+  ));
+
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
+  renderList();
 }
 
 function handleEditTrackerUrl(client) {
