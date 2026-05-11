@@ -71,6 +71,33 @@
   margin-bottom: 10px;
 }
 
+.pm-client-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pm-client-filter label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pm-filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  font-family: inherit;
+  flex: 1;
+  max-width: 280px;
+}
+
 .pm-saved-select:focus {
   outline: none;
   border-color: #888;

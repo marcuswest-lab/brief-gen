@@ -19,6 +19,7 @@ const state = {
   briefText: '',           // when briefSource === 'paste'
   requestDoc: '',
   briefTypeOverride: '',  // '' = auto-detect
+  briefFilterClientId: '', // '' = all; otherwise narrows the saved-brief picker
   clientId: null,          // selected client (for tracker URL)
   clients: [],             // loaded from clients.json + localStorage
   result: null,            // mapBriefToTracker output
@@ -26,6 +27,7 @@ const state = {
   trackerNames: '',
   filledStates: {},        // { [index]: true } UI checkmarks
   trackerToBriefBriefId: null,  // selected brief to bake names into
+  trackerToBriefFilterClientId: '', // separate filter for the regen tab
 };
 
 // -------- Persistence --------
@@ -39,10 +41,12 @@ function saveState() {
       briefText: state.briefText,
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride,
+      briefFilterClientId: state.briefFilterClientId,
       clientId: state.clientId,
       trackerNames: state.trackerNames,
       filledStates: state.filledStates,
       trackerToBriefBriefId: state.trackerToBriefBriefId,
+      trackerToBriefFilterClientId: state.trackerToBriefFilterClientId,
     }));
   } catch (e) {
     console.warn('Save failed:', e);
@@ -219,6 +223,14 @@ function renderBriefToTracker() {
       card.appendChild(el('div', { class: 'pm-detect pm-detect-empty' },
         'No saved briefs yet. Generate a brief in Briefgen and it will appear here.'));
     } else {
+      // Client filter
+      card.appendChild(renderClientFilter('briefFilterClientId', savedBriefs, () => renderBriefToTracker()));
+
+      // Filter the briefs by selected client
+      const filtered = state.briefFilterClientId
+        ? savedBriefs.filter(b => b.clientId === state.briefFilterClientId)
+        : savedBriefs;
+
       const sel = el('select', {
         id: 'pm-saved-brief',
         class: 'pm-saved-select',
@@ -227,12 +239,15 @@ function renderBriefToTracker() {
           saveState();
         },
       });
-      sel.appendChild(el('option', { value: '' }, '— pick a brief —'));
-      for (const b of savedBriefs) {
+      sel.appendChild(el('option', { value: '' }, filtered.length === 0
+        ? '— no briefs for this client —'
+        : '— pick a brief —'));
+      for (const b of filtered) {
         const opt = el('option', { value: b.id }, briefDisplayLabel(b));
         if (b.id === state.selectedBriefId) opt.setAttribute('selected', '');
         sel.appendChild(opt);
       }
+      if (filtered.length === 0) sel.setAttribute('disabled', '');
       card.appendChild(sel);
     }
   } else {
@@ -311,6 +326,45 @@ function renderBriefToTracker() {
   }
 }
 
+/**
+ * Render a small client filter dropdown that narrows a brief picker to one
+ * client. `stateKey` is the field name on `state` to read/write (e.g.
+ * 'briefFilterClientId'). `briefs` is the source list (used to derive which
+ * client options to offer + counts). `onChange` is called after the value
+ * changes (typically the parent renderer).
+ */
+function renderClientFilter(stateKey, briefs, onChange) {
+  const wrap = el('div', { class: 'pm-client-filter' });
+  wrap.appendChild(el('label', { for: `filter-${stateKey}` }, 'Filter by client'));
+
+  // Build client → count map from the brief list (so empty clients aren't shown)
+  const counts = new Map();
+  for (const b of briefs) {
+    counts.set(b.clientId, (counts.get(b.clientId) || 0) + 1);
+  }
+  const clientsWithBriefs = state.clients
+    .filter(c => counts.has(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const sel = el('select', {
+    id: `filter-${stateKey}`,
+    class: 'pm-filter-select',
+    onchange: (e) => {
+      state[stateKey] = e.target.value;
+      saveState();
+      if (onChange) onChange();
+    },
+  });
+  sel.appendChild(el('option', { value: '' }, `All clients (${briefs.length})`));
+  for (const c of clientsWithBriefs) {
+    const opt = el('option', { value: c.id }, `${c.name} (${counts.get(c.id)})`);
+    if (state[stateKey] === c.id) opt.setAttribute('selected', '');
+    sel.appendChild(opt);
+  }
+  wrap.appendChild(sel);
+  return wrap;
+}
+
 function makeSourceTab(value, label, disabled) {
   return el('button', {
     type: 'button',
@@ -338,6 +392,7 @@ function handleClearBrief() {
 function handleGenerateRows() {
   try {
     let parsedBrief = null;
+    let detectedClient = null;
 
     if (state.briefSource === 'saved') {
       if (!state.selectedBriefId) {
@@ -354,17 +409,21 @@ function handleGenerateRows() {
         overview: stored.overview,
         variations: stored.creatives,
       };
+      detectedClient = state.clients.find(c => c.id === stored.clientId)
+        || state.clients.find(c => c.name === stored.clientName);
     } else {
       if (!state.briefText.trim()) {
         flashStatus('Paste a brief first.', 'error');
         return;
       }
       parsedBrief = parseBrief(state.briefText);
+      detectedClient = detectClientFromBrief(state.briefText);
     }
 
     const result = mapBriefToTracker(parsedBrief, {
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride || undefined,
+      clientTrackerOverrides: detectedClient?.tracker_overrides,
     });
     if (result.variationCount === 0) {
       flashStatus('No variations found. Check that the brief has filled creative tables.', 'error');
@@ -536,6 +595,12 @@ function renderTrackerToBrief() {
       'Pick the saved brief these names belong to. Clicking Regenerate fills File Name / Name for each creative in order, updates the saved brief, and downloads a fresh .docx — ready to upload back into Google Docs.',
     ));
 
+    regenCard.appendChild(renderClientFilter('trackerToBriefFilterClientId', savedBriefs, () => renderTrackerToBrief()));
+
+    const filteredBriefs = state.trackerToBriefFilterClientId
+      ? savedBriefs.filter(b => b.clientId === state.trackerToBriefFilterClientId)
+      : savedBriefs;
+
     const sel = el('select', {
       id: 'pm-regen-brief',
       class: 'pm-saved-select',
@@ -544,13 +609,16 @@ function renderTrackerToBrief() {
         saveState();
       },
     });
-    sel.appendChild(el('option', { value: '' }, '— pick the saved brief —'));
-    for (const b of savedBriefs) {
+    sel.appendChild(el('option', { value: '' }, filteredBriefs.length === 0
+      ? '— no briefs for this client —'
+      : '— pick the saved brief —'));
+    for (const b of filteredBriefs) {
       const opt = el('option', { value: b.id },
         `${briefDisplayLabel(b)} — ${b.creatives.length} creative${b.creatives.length === 1 ? '' : 's'}`);
       if (b.id === state.trackerToBriefBriefId) opt.setAttribute('selected', '');
       sel.appendChild(opt);
     }
+    if (filteredBriefs.length === 0) sel.setAttribute('disabled', '');
     regenCard.appendChild(sel);
 
     regenCard.appendChild(el('div', { class: 'pm-actions' },

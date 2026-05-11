@@ -71,6 +71,17 @@
       "defaults": {
         "Copywriter": "Nate Weeks",
         "Ad Platform": "Meta"
+      },
+      "tracker_overrides": {
+        "static": {
+          "block1": { "drop": ["Winner Status"] }
+        },
+        "video": {
+          "block1": { "drop": ["Winner Status"] }
+        },
+        "copy": {
+          "block1": { "drop": ["Winner Status"] }
+        }
       }
     }
   ]

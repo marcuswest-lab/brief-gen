@@ -4,7 +4,11 @@ import { TRACKERS, TRANSFORMS, extractCid, extractVariationName } from './tracke
 
 /**
  * @param {{briefType: string, overview: object, variations: object[]}} brief
- * @param {{requestDoc?: string, briefTypeOverride?: string}} options
+ * @param {{
+ *   requestDoc?: string,
+ *   briefTypeOverride?: string,
+ *   clientTrackerOverrides?: object  // optional per-client layout tweaks
+ * }} options
  * @returns {{
  *   tracker: 'static'|'video'|'copy',
  *   trackerLabel: string,
@@ -19,7 +23,9 @@ export function mapBriefToTracker(brief, options = {}) {
   if (!tracker || !TRACKERS[tracker]) {
     throw new Error(`Unknown brief type: ${tracker}`);
   }
-  const cfg = TRACKERS[tracker];
+  const baseCfg = TRACKERS[tracker];
+  // Apply per-client tracker overrides (e.g. Quintessa drops Winner Status).
+  const cfg = applyTrackerOverride(baseCfg, options.clientTrackerOverrides?.[tracker]);
 
   const today = formatDate(new Date());
   const ctx = {
@@ -93,6 +99,67 @@ function resolveSource(source, variation, ctx) {
 
 function formatDate(d) {
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+}
+
+/**
+ * Apply per-client overrides to a tracker config.
+ *
+ * Override schema (per tracker type):
+ *   {
+ *     block1: { drop?: ['Winner Status', ...], replaceFields?: [...] },
+ *     block2: { drop?: [...], replaceFields?: [...] },
+ *   }
+ *
+ * `drop` removes named fields from a block. After dropping, columns shift
+ * left automatically (col letters get re-stamped A,B,C,...).
+ *
+ * `replaceFields` (rare) lets you provide a custom field array for that
+ * block, used when the override is more than just deletions.
+ */
+function applyTrackerOverride(baseCfg, override) {
+  if (!override) return baseCfg;
+  const newCfg = { ...baseCfg };
+  for (const blockName of ['block1', 'block2']) {
+    const baseBlock = baseCfg[blockName];
+    const overrideBlock = override[blockName];
+    if (!overrideBlock) continue;
+    let fields = baseBlock.fields;
+    if (overrideBlock.replaceFields) {
+      fields = overrideBlock.replaceFields;
+    }
+    if (overrideBlock.drop && overrideBlock.drop.length > 0) {
+      const dropSet = new Set(overrideBlock.drop);
+      fields = fields.filter(f => !dropSet.has(f.label));
+    }
+    // Re-stamp column letters starting from baseBlock.startCol
+    const startCol = baseBlock.startCol;
+    fields = fields.map((f, i) => ({ ...f, col: addColLetters(startCol, i) }));
+    newCfg[blockName] = { ...baseBlock, fields };
+  }
+  return newCfg;
+}
+
+/**
+ * Add an integer offset to a spreadsheet column letter.
+ *   addColLetters('A', 0) -> 'A'
+ *   addColLetters('A', 1) -> 'B'
+ *   addColLetters('Z', 1) -> 'AA'
+ *   addColLetters('W', 5) -> 'AB'
+ */
+function addColLetters(start, offset) {
+  // Convert letters to 0-based index
+  let idx = 0;
+  for (const ch of start) {
+    idx = idx * 26 + (ch.charCodeAt(0) - 'A'.charCodeAt(0) + 1);
+  }
+  idx = idx - 1 + offset;
+  // Convert back
+  let out = '';
+  while (idx >= 0) {
+    out = String.fromCharCode('A'.charCodeAt(0) + (idx % 26)) + out;
+    idx = Math.floor(idx / 26) - 1;
+  }
+  return out;
 }
 
 /**
