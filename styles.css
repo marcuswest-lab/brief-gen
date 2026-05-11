@@ -592,6 +592,80 @@ html, body {
   color: var(--danger);
 }
 
+/* -------- My Briefs modal -------- */
+
+.briefs-dialog {
+  max-width: 720px;
+}
+
+.briefs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.briefs-item-current {
+  border-color: #b8d4ff;
+  background: #f5f9ff;
+}
+
+.briefs-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.briefs-label-main {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.briefs-current-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.briefs-label-sub {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.briefs-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* -------- "Editing saved brief" indicator row -------- */
+
+.editing-row {
+  background: #f5f9ff;
+  border: 1px solid #b8d4ff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 6px;
+  align-self: stretch;
+  justify-content: space-between;
+}
+
+.editing-tag {
+  font-size: 12px;
+  color: #0a3d91;
+  font-weight: 500;
+}
+
 @media (max-width: 720px) {
   .fields-grid {
     grid-template-columns: 1fr;

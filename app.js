@@ -2,6 +2,7 @@
 
 import { TEMPLATES, DROPDOWN_OPTIONS } from './lib/templates-config.js';
 import { generateBrief } from './lib/docx-filler.js';
+import { loadBriefs, upsertBrief, deleteBrief, getBrief, sortBriefsRecent, briefDisplayLabel } from './lib/brief-store.js';
 
 const MAX_CREATIVES = 5;
 const STORAGE_KEY = 'pbg.formState.v1';
@@ -21,10 +22,12 @@ const state = {
   // Form data is keyed by briefType so switching tabs preserves work.
   // `activePresetId` is the preset that was last applied for this brief type +
   // current client. Cleared when the user picks the placeholder option.
+  // `loadedBriefId` is non-null when the current form is editing a saved
+  // brief — Generate updates that record instead of creating a new one.
   forms: {
-    static: { overview: {}, creatives: [{}], activePresetId: null },
-    video:  { overview: {}, creatives: [{}], activePresetId: null },
-    copy:   { overview: {}, creatives: [{}], activePresetId: null },
+    static: { overview: {}, creatives: [{}], activePresetId: null, loadedBriefId: null },
+    video:  { overview: {}, creatives: [{}], activePresetId: null, loadedBriefId: null },
+    copy:   { overview: {}, creatives: [{}], activePresetId: null, loadedBriefId: null },
   },
 };
 
@@ -59,6 +62,9 @@ function loadState() {
         // Backfill activePresetId for old saved state
         if (state.forms[k].activePresetId === undefined) {
           state.forms[k].activePresetId = null;
+        }
+        if (state.forms[k].loadedBriefId === undefined) {
+          state.forms[k].loadedBriefId = null;
         }
       }
     }
@@ -194,6 +200,15 @@ function renderClientPicker() {
   }
   clientRow.appendChild(select);
 
+  // My Briefs button — opens the saved-briefs modal
+  const briefCount = loadBriefs().length;
+  clientRow.appendChild(el('button', {
+    type: 'button',
+    class: 'btn-secondary btn-small',
+    onclick: handleOpenMyBriefs,
+    title: 'View, load, edit, or regenerate previously saved briefs',
+  }, briefCount > 0 ? `My Briefs (${briefCount})` : 'My Briefs'));
+
   clientRow.appendChild(el('button', {
     type: 'button',
     class: 'btn-secondary btn-small',
@@ -212,6 +227,29 @@ function renderClientPicker() {
     }, currentClient.tracker_url ? 'Tracker URL ✓' : '+ Tracker URL'));
   }
   wrap.appendChild(clientRow);
+
+  // Show "editing" indicator if a brief is loaded
+  const loadedBriefId = state.forms[state.briefType].loadedBriefId;
+  if (loadedBriefId) {
+    const loadedBrief = getBrief(loadedBriefId);
+    if (loadedBrief) {
+      const editingRow = el('div', { class: 'picker-row editing-row' });
+      editingRow.appendChild(el('span', { class: 'editing-tag' },
+        `Editing saved brief: ${loadedBrief.ideaName || '(untitled)'} (${loadedBrief.briefType})`,
+      ));
+      editingRow.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        onclick: () => {
+          state.forms[state.briefType].loadedBriefId = null;
+          saveState();
+          renderClientPicker();
+        },
+        title: 'Stop editing this saved brief (next Generate creates a new record)',
+      }, 'New brief'));
+      wrap.appendChild(editingRow);
+    }
+  }
 
   // -- Preset row --
   const presets = getPresetsForCurrentClient();
@@ -798,8 +836,24 @@ async function handleGenerate() {
 
     saveAs(blob, filename);
 
+    // Persist this brief into the shared store. If we were editing a loaded
+    // brief, update it in place; otherwise create a new record.
+    const form = state.forms[state.briefType];
+    const stored = upsertBrief({
+      id: form.loadedBriefId || undefined,
+      clientId: client.id,
+      clientName: client.name,
+      briefType: state.briefType,
+      ideaName: ov['Idea Name'] || '',
+      overview: { ...ov },
+      creatives: creatives.map(c => ({ ...c })),
+    });
+    form.loadedBriefId = stored.id;
+    saveState();
+    renderClientPicker();
+
     status.className = 'success';
-    status.textContent = `✓ Generated ${filename}`;
+    status.textContent = `✓ Generated ${filename} (saved to My Briefs)`;
   } catch (err) {
     console.error(err);
     status.className = 'error';
@@ -812,9 +866,133 @@ async function handleGenerate() {
 
 function handleClear() {
   if (!confirm(`Clear all fields for the current ${TEMPLATES[state.briefType].label} brief?`)) return;
-  state.forms[state.briefType] = { overview: {}, creatives: [{}] };
+  state.forms[state.briefType] = { overview: {}, creatives: [{}], activePresetId: null, loadedBriefId: null };
   applyClientDefaults();
   saveState();
+  renderClientPicker();
+  renderForm();
+}
+
+// -------- My Briefs --------
+
+function handleOpenMyBriefs() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  const renderList = () => {
+    listEl.innerHTML = '';
+    const briefs = sortBriefsRecent(loadBriefs());
+
+    if (briefs.length === 0) {
+      listEl.appendChild(el('div', { class: 'pm-empty' },
+        'No saved briefs yet. Generate a brief and it will appear here.'
+      ));
+      return;
+    }
+
+    for (const brief of briefs) {
+      const isCurrent = state.forms[brief.briefType]?.loadedBriefId === brief.id;
+      const item = el('div', { class: 'pm-item briefs-item' + (isCurrent ? ' briefs-item-current' : '') });
+
+      const label = el('div', { class: 'briefs-label' });
+      label.appendChild(el('div', { class: 'briefs-label-main' },
+        `${brief.clientName} — ${brief.briefType === 'copy' ? 'Body Copy' : (brief.briefType[0].toUpperCase() + brief.briefType.slice(1))}`,
+        isCurrent ? el('span', { class: 'briefs-current-tag' }, 'editing') : null,
+      ));
+      label.appendChild(el('div', { class: 'briefs-label-sub' },
+        `${brief.ideaName || '(untitled)'} · ${brief.creatives.length} creative${brief.creatives.length === 1 ? '' : 's'} · ${new Date(brief.updatedAt || brief.createdAt).toLocaleString()}`,
+      ));
+      item.appendChild(label);
+
+      const actions = el('div', { class: 'briefs-actions' });
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-primary btn-small',
+        onclick: () => {
+          handleLoadBrief(brief);
+          close();
+        },
+      }, isCurrent ? 'Editing' : 'Load'));
+
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        onclick: async () => {
+          handleLoadBrief(brief);
+          close();
+          // Trigger Generate after a tick so the form has rendered
+          await new Promise(r => setTimeout(r, 50));
+          handleGenerate();
+        },
+      }, 'Regenerate'));
+
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small pm-delete',
+        onclick: () => {
+          if (!confirm(`Delete "${brief.ideaName || '(untitled)'}"? This can't be undone.`)) return;
+          deleteBrief(brief.id);
+          // Clear loadedBriefId from any form that pointed here
+          for (const k of ['static', 'video', 'copy']) {
+            if (state.forms[k].loadedBriefId === brief.id) state.forms[k].loadedBriefId = null;
+          }
+          saveState();
+          renderList();
+        },
+      }, 'Delete'));
+      item.appendChild(actions);
+
+      listEl.appendChild(item);
+    }
+  };
+
+  const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) close(); } });
+  const dialog = el('div', { class: 'modal-dialog briefs-dialog' });
+
+  dialog.appendChild(el('div', { class: 'modal-header' },
+    el('h2', {}, 'My Briefs'),
+    el('button', { type: 'button', class: 'modal-close', onclick: close, title: 'Close' }, '×'),
+  ));
+
+  const body = el('div', { class: 'modal-body' });
+  body.appendChild(el('p', { class: 'modal-hint' },
+    'Every brief you generate is saved here. Click Load to edit it; Regenerate to load + immediately download a fresh .docx (useful after filling in tracker-generated names via the PM app).'
+  ));
+  const listEl = el('div', { class: 'pm-list' });
+  body.appendChild(listEl);
+  dialog.appendChild(body);
+
+  dialog.appendChild(el('div', { class: 'modal-footer' },
+    el('button', { type: 'button', class: 'btn-primary', onclick: close }, 'Done'),
+  ));
+
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
+  renderList();
+}
+
+function handleLoadBrief(brief) {
+  // Switch to the brief's type, set the client, hydrate form with stored data
+  state.briefType = brief.briefType;
+  // Try to switch client; if the client no longer exists, keep current
+  if (state.clients.some(c => c.id === brief.clientId)) {
+    state.clientId = brief.clientId;
+  }
+  state.forms[brief.briefType] = {
+    overview: { ...brief.overview },
+    creatives: brief.creatives.length > 0 ? brief.creatives.map(c => ({ ...c })) : [{}],
+    activePresetId: null,
+    loadedBriefId: brief.id,
+  };
+  saveState();
+  renderClientPicker();
   renderForm();
 }
 

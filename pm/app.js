@@ -3,6 +3,9 @@
 import { parseBrief, detectBriefType } from './lib/brief-parser.js';
 import { mapBriefToTracker, blockToTSV } from './lib/tracker-mapper.js';
 import { TRACKERS } from './lib/tracker-config.js';
+import { loadBriefs, getBrief, upsertBrief, sortBriefsRecent } from '../lib/brief-store.js';
+import { TEMPLATES } from '../lib/templates-config.js';
+import { generateBrief } from '../lib/docx-filler.js';
 
 const STORAGE_KEY = 'pbg.pm.state.v1';
 const CLIENTS_STORAGE_KEY = 'pbg.localClients.v1';
@@ -11,7 +14,9 @@ const TRACKER_URL_OVERRIDES_KEY = 'pbg.trackerUrlOverrides.v1';
 const state = {
   tab: 'brief-to-tracker',  // | 'tracker-to-brief'
   // Brief → Tracker
-  briefText: '',
+  briefSource: 'saved',    // 'saved' | 'paste' — toggle in B→T tab
+  selectedBriefId: null,   // when briefSource === 'saved'
+  briefText: '',           // when briefSource === 'paste'
   requestDoc: '',
   briefTypeOverride: '',  // '' = auto-detect
   clientId: null,          // selected client (for tracker URL)
@@ -20,6 +25,7 @@ const state = {
   // Tracker → Brief
   trackerNames: '',
   filledStates: {},        // { [index]: true } UI checkmarks
+  trackerToBriefBriefId: null,  // selected brief to bake names into
 };
 
 // -------- Persistence --------
@@ -28,12 +34,15 @@ function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       tab: state.tab,
+      briefSource: state.briefSource,
+      selectedBriefId: state.selectedBriefId,
       briefText: state.briefText,
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride,
       clientId: state.clientId,
       trackerNames: state.trackerNames,
       filledStates: state.filledStates,
+      trackerToBriefBriefId: state.trackerToBriefBriefId,
     }));
   } catch (e) {
     console.warn('Save failed:', e);
@@ -187,35 +196,75 @@ function renderBriefToTracker() {
   const wrap = document.getElementById('pm-content');
   wrap.innerHTML = '';
 
+  const savedBriefs = sortBriefsRecent(loadBriefs());
+  const hasSaved = savedBriefs.length > 0;
+
+  // If user state says "saved" but no saved briefs exist, fall back to paste
+  if (state.briefSource === 'saved' && !hasSaved) {
+    state.briefSource = 'paste';
+  }
+
   const card = el('div', { class: 'card' });
-  card.appendChild(el('h2', {}, 'Paste your brief'));
+  card.appendChild(el('h2', {}, 'Choose a brief'));
 
-  const detectedType = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
-  const detectionLine = detectedType
-    ? el('div', { class: 'pm-detect' }, `Detected brief type: `, el('strong', {}, TRACKERS[detectedType]?.label || detectedType))
-    : el('div', { class: 'pm-detect pm-detect-empty' }, 'Paste a brief to auto-detect its type.');
-  card.appendChild(detectionLine);
+  // Source toggle
+  const toggleRow = el('div', { class: 'pm-source-toggle' });
+  toggleRow.appendChild(makeSourceTab('saved', 'Saved brief', !hasSaved));
+  toggleRow.appendChild(makeSourceTab('paste', 'Paste manually', false));
+  card.appendChild(toggleRow);
 
-  // Textarea
-  const briefTa = el('textarea', {
-    id: 'brief-text',
-    placeholder: 'Open the brief in Google Docs (or Word), Cmd+A, Cmd+C, then paste here…',
-    rows: 14,
-    oninput: (e) => {
-      state.briefText = e.target.value;
-      saveState();
-      // Re-render only the detection line (not the whole tab) so the cursor stays put
-      const newDetected = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
-      const newLine = newDetected
-        ? el('div', { class: 'pm-detect' }, 'Detected brief type: ', el('strong', {}, TRACKERS[newDetected]?.label || newDetected))
-        : el('div', { class: 'pm-detect pm-detect-empty' }, 'Paste a brief to auto-detect its type.');
-      detectionLine.replaceWith(newLine);
-    },
-  });
-  briefTa.value = state.briefText;
-  card.appendChild(briefTa);
+  if (state.briefSource === 'saved') {
+    // Saved brief picker
+    if (savedBriefs.length === 0) {
+      card.appendChild(el('div', { class: 'pm-detect pm-detect-empty' },
+        'No saved briefs yet. Generate a brief in Briefgen and it will appear here.'));
+    } else {
+      const sel = el('select', {
+        id: 'pm-saved-brief',
+        class: 'pm-saved-select',
+        onchange: (e) => {
+          state.selectedBriefId = e.target.value || null;
+          saveState();
+        },
+      });
+      sel.appendChild(el('option', { value: '' }, '— pick a brief —'));
+      for (const b of savedBriefs) {
+        const type = b.briefType === 'copy' ? 'Body Copy' : (b.briefType[0].toUpperCase() + b.briefType.slice(1));
+        const dt = new Date(b.updatedAt || b.createdAt).toLocaleDateString();
+        const opt = el('option', { value: b.id },
+          `${b.clientName} — ${type} — ${b.ideaName || '(untitled)'} — ${dt}`);
+        if (b.id === state.selectedBriefId) opt.setAttribute('selected', '');
+        sel.appendChild(opt);
+      }
+      card.appendChild(sel);
+    }
+  } else {
+    // Paste-text mode (manual upload)
+    const detectedType = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
+    const detectionLine = detectedType
+      ? el('div', { class: 'pm-detect' }, `Detected brief type: `, el('strong', {}, TRACKERS[detectedType]?.label || detectedType))
+      : el('div', { class: 'pm-detect pm-detect-empty' }, 'Paste a brief to auto-detect its type.');
+    card.appendChild(detectionLine);
 
-  // Inputs row: Request Doc URL + override
+    const briefTa = el('textarea', {
+      id: 'brief-text',
+      placeholder: 'Open the brief in Google Docs (or Word), Cmd+A, Cmd+C, then paste here…',
+      rows: 14,
+      oninput: (e) => {
+        state.briefText = e.target.value;
+        saveState();
+        const newDetected = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
+        const newLine = newDetected
+          ? el('div', { class: 'pm-detect' }, 'Detected brief type: ', el('strong', {}, TRACKERS[newDetected]?.label || newDetected))
+          : el('div', { class: 'pm-detect pm-detect-empty' }, 'Paste a brief to auto-detect its type.');
+        detectionLine.replaceWith(newLine);
+      },
+    });
+    briefTa.value = state.briefText;
+    card.appendChild(briefTa);
+  }
+
+  // Inputs row: Request Doc URL + (only for paste) brief type override
   const inputsRow = el('div', { class: 'pm-input-row' });
 
   const urlField = el('div', { class: 'pm-input-field' });
@@ -230,28 +279,29 @@ function renderBriefToTracker() {
   urlField.appendChild(urlInput);
   inputsRow.appendChild(urlField);
 
-  const overrideField = el('div', { class: 'pm-input-field pm-input-narrow' });
-  overrideField.appendChild(el('label', { for: 'type-override' }, 'Brief type override'));
-  const overrideSelect = el('select', {
-    id: 'type-override',
-    onchange: (e) => {
-      state.briefTypeOverride = e.target.value;
-      saveState();
-      renderBriefToTracker();
+  if (state.briefSource === 'paste') {
+    const overrideField = el('div', { class: 'pm-input-field pm-input-narrow' });
+    overrideField.appendChild(el('label', { for: 'type-override' }, 'Brief type override'));
+    const overrideSelect = el('select', {
+      id: 'type-override',
+      onchange: (e) => {
+        state.briefTypeOverride = e.target.value;
+        saveState();
+        renderBriefToTracker();
+      },
     },
-  },
-    el('option', { value: '' }, 'Auto-detect'),
-    el('option', { value: 'static' }, 'Static'),
-    el('option', { value: 'video' }, 'Video'),
-    el('option', { value: 'copy' }, 'Body Copy'),
-  );
-  overrideSelect.value = state.briefTypeOverride;
-  overrideField.appendChild(overrideSelect);
-  inputsRow.appendChild(overrideField);
+      el('option', { value: '' }, 'Auto-detect'),
+      el('option', { value: 'static' }, 'Static'),
+      el('option', { value: 'video' }, 'Video'),
+      el('option', { value: 'copy' }, 'Body Copy'),
+    );
+    overrideSelect.value = state.briefTypeOverride;
+    overrideField.appendChild(overrideSelect);
+    inputsRow.appendChild(overrideField);
+  }
 
   card.appendChild(inputsRow);
 
-  // Actions
   const actions = el('div', { class: 'pm-actions' },
     el('button', { type: 'button', class: 'btn-secondary', onclick: handleClearBrief }, 'Clear'),
     el('button', { type: 'button', class: 'btn-primary', onclick: handleGenerateRows }, 'Generate Tracker Rows'),
@@ -259,34 +309,68 @@ function renderBriefToTracker() {
   card.appendChild(actions);
   wrap.appendChild(card);
 
-  // Result panel
   if (state.result) {
     wrap.appendChild(renderResultPanel(state.result));
   }
+}
+
+function makeSourceTab(value, label, disabled) {
+  return el('button', {
+    type: 'button',
+    class: 'pm-source-tab' + (state.briefSource === value ? ' active' : '') + (disabled ? ' disabled' : ''),
+    disabled: disabled || undefined,
+    onclick: disabled ? null : () => {
+      state.briefSource = value;
+      state.result = null;
+      saveState();
+      renderBriefToTracker();
+    },
+  }, label);
 }
 
 function handleClearBrief() {
   state.briefText = '';
   state.requestDoc = '';
   state.briefTypeOverride = '';
+  state.selectedBriefId = null;
   state.result = null;
   saveState();
   renderBriefToTracker();
 }
 
 function handleGenerateRows() {
-  if (!state.briefText.trim()) {
-    flashStatus('Paste a brief first.', 'error');
-    return;
-  }
   try {
-    const brief = parseBrief(state.briefText);
-    const result = mapBriefToTracker(brief, {
+    let parsedBrief = null;
+
+    if (state.briefSource === 'saved') {
+      if (!state.selectedBriefId) {
+        flashStatus('Pick a saved brief first.', 'error');
+        return;
+      }
+      const stored = getBrief(state.selectedBriefId);
+      if (!stored) {
+        flashStatus('Saved brief not found (was it deleted?).', 'error');
+        return;
+      }
+      parsedBrief = {
+        briefType: stored.briefType,
+        overview: stored.overview,
+        variations: stored.creatives,
+      };
+    } else {
+      if (!state.briefText.trim()) {
+        flashStatus('Paste a brief first.', 'error');
+        return;
+      }
+      parsedBrief = parseBrief(state.briefText);
+    }
+
+    const result = mapBriefToTracker(parsedBrief, {
       requestDoc: state.requestDoc,
       briefTypeOverride: state.briefTypeOverride || undefined,
     });
     if (result.variationCount === 0) {
-      flashStatus('No variations found in the brief. Make sure you copied the full brief including the variation tables.', 'error');
+      flashStatus('No variations found. Check that the brief has filled creative tables.', 'error');
       return;
     }
     state.result = result;
@@ -302,8 +386,19 @@ function renderResultPanel(result) {
   const card = el('div', { class: 'card pm-result' });
   card.appendChild(el('h2', {}, `${result.trackerLabel} — ${result.variationCount} row${result.variationCount === 1 ? '' : 's'}`));
 
-  // Detect client + show tracker link if we have one
-  const detectedClient = detectClientFromBrief(state.briefText);
+  // Detect client: from selected saved brief if available, else from pasted text
+  let detectedClient = null;
+  if (state.briefSource === 'saved' && state.selectedBriefId) {
+    const stored = getBrief(state.selectedBriefId);
+    if (stored) {
+      detectedClient = state.clients.find(c => c.id === stored.clientId)
+        || state.clients.find(c => c.name === stored.clientName)
+        || null;
+    }
+  }
+  if (!detectedClient) {
+    detectedClient = detectClientFromBrief(state.briefText);
+  }
   if (detectedClient && detectedClient.tracker_url) {
     const banner = el('div', { class: 'pm-tracker-banner' });
     banner.appendChild(el('div', { class: 'pm-tracker-banner-text' },
@@ -435,10 +530,124 @@ function renderTrackerToBrief() {
   ));
   wrap.appendChild(card);
 
+  // Regen card: pick a saved brief, bake names in, download fresh .docx
+  const savedBriefs = sortBriefsRecent(loadBriefs());
+  if (savedBriefs.length > 0) {
+    const regenCard = el('div', { class: 'card' });
+    regenCard.appendChild(el('h2', {}, 'Regenerate brief with these names'));
+    regenCard.appendChild(el('p', { class: 'pm-help' },
+      'Pick the saved brief these names belong to. Clicking Regenerate fills File Name / Name for each creative in order, updates the saved brief, and downloads a fresh .docx — ready to upload back into Google Docs.',
+    ));
+
+    const sel = el('select', {
+      id: 'pm-regen-brief',
+      class: 'pm-saved-select',
+      onchange: (e) => {
+        state.trackerToBriefBriefId = e.target.value || null;
+        saveState();
+      },
+    });
+    sel.appendChild(el('option', { value: '' }, '— pick the saved brief —'));
+    for (const b of savedBriefs) {
+      const type = b.briefType === 'copy' ? 'Body Copy' : (b.briefType[0].toUpperCase() + b.briefType.slice(1));
+      const dt = new Date(b.updatedAt || b.createdAt).toLocaleDateString();
+      const opt = el('option', { value: b.id },
+        `${b.clientName} — ${type} — ${b.ideaName || '(untitled)'} — ${dt} — ${b.creatives.length} creative${b.creatives.length === 1 ? '' : 's'}`);
+      if (b.id === state.trackerToBriefBriefId) opt.setAttribute('selected', '');
+      sel.appendChild(opt);
+    }
+    regenCard.appendChild(sel);
+
+    regenCard.appendChild(el('div', { class: 'pm-actions' },
+      el('button', { type: 'button', class: 'btn-primary', onclick: handleRegenWithNames },
+        'Regenerate brief .docx with names'),
+    ));
+    wrap.appendChild(regenCard);
+  }
+
   // Output panel
   const outputCard = el('div', { id: 'tracker-output', class: 'card' });
   wrap.appendChild(outputCard);
   renderTrackerOutput();
+}
+
+async function handleRegenWithNames() {
+  const names = (state.trackerNames || '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  if (names.length === 0) {
+    flashStatus('Paste tracker-generated names first.', 'error');
+    return;
+  }
+  if (!state.trackerToBriefBriefId) {
+    flashStatus('Pick a saved brief to bake the names into.', 'error');
+    return;
+  }
+  const brief = getBrief(state.trackerToBriefBriefId);
+  if (!brief) {
+    flashStatus('Saved brief not found.', 'error');
+    return;
+  }
+
+  const config = TEMPLATES[brief.briefType];
+  if (!config) {
+    flashStatus(`Unknown brief type: ${brief.briefType}`, 'error');
+    return;
+  }
+
+  if (names.length > brief.creatives.length) {
+    if (!confirm(`You have ${names.length} names but the brief has ${brief.creatives.length} creative${brief.creatives.length === 1 ? '' : 's'}. Extra names will be ignored. Continue?`)) {
+      return;
+    }
+  }
+
+  // For body copy the field is "Name"; for static/video it's "File Name"
+  const nameField = brief.briefType === 'copy' ? 'Name' : 'File Name';
+
+  // Merge names into creatives (deep clone to avoid mutating storage)
+  const updatedCreatives = brief.creatives.map((c, i) => ({
+    ...c,
+    [nameField]: i < names.length ? names[i] : (c[nameField] || ''),
+  }));
+
+  // Persist the updated brief
+  upsertBrief({
+    ...brief,
+    creatives: updatedCreatives,
+  });
+
+  // Generate the .docx
+  try {
+    const res = await fetch(`../${config.file}`);
+    if (!res.ok) throw new Error(`Failed to load template: ${res.status}`);
+    const templateBuffer = await res.arrayBuffer();
+
+    const blob = await generateBrief({
+      briefType: brief.briefType,
+      clientName: brief.clientName,
+      overview: brief.overview,
+      creatives: updatedCreatives,
+      templateBuffer,
+    });
+
+    const safe = (s) => String(s || '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_').slice(0, 60);
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = [
+      safe(brief.clientName) || 'Client',
+      config.label.replace(/\s+/g, ''),
+      safe(brief.ideaName) || 'Brief',
+      'with-names',
+      today,
+    ].join('_') + '.docx';
+
+    saveAs(blob, filename);
+    flashStatus(`✓ Regenerated ${filename} (${Math.min(names.length, brief.creatives.length)} names baked in).`);
+  } catch (e) {
+    console.error(e);
+    flashStatus('Error: ' + e.message, 'error');
+  }
 }
 
 function renderTrackerOutput() {
