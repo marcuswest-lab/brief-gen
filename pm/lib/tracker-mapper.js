@@ -38,10 +38,12 @@ export function mapBriefToTracker(brief, options = {}) {
 
   const buildBlock = (blockCfg) => {
     const headers = blockCfg.fields.map(f => `${f.col}: ${f.label}`);
+    // renderHints[i] is metadata about column i (e.g. {renderAs: 'url'})
+    const renderHints = blockCfg.fields.map(f => ({ renderAs: f.renderAs || null }));
     const rows = ctx.variations.map(variation => {
       return blockCfg.fields.map(field => resolveFieldValue(field, variation, ctx));
     });
-    return { startCol: blockCfg.startCol, headers, rows };
+    return { startCol: blockCfg.startCol, headers, renderHints, rows };
   };
 
   const block1 = buildBlock(cfg.block1);

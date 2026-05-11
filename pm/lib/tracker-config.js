@@ -30,8 +30,8 @@ export const TRACKERS = {
         { col: 'J', label: 'Lead Type',            source: 'variation:Lead Type', transform: 'leadTypeNormalize' },
         { col: 'K', label: 'Variation Type',       source: 'variation:Variation Type', transform: 'staticVariationType', note: "Variation Type: brief 'Lead' → tracker 'Hook'. Brief 'Visual'/'Copy' don't map (left blank)." },
         { col: 'L', label: 'CID',                  source: 'computed:cid' },
-        { col: 'M', label: 'Request Doc',          source: 'requestDoc' },
-        { col: 'N', label: 'Folder Link',          source: 'overview:Photo Folder|fallback:clientFolderUrl' },
+        { col: 'M', label: 'Request Doc',          source: 'requestDoc', renderAs: 'url' },
+        { col: 'N', label: 'Folder Link',          source: 'overview:Photo Folder|fallback:clientFolderUrl', renderAs: 'url' },
       ],
     },
     block2: {
@@ -64,8 +64,8 @@ export const TRACKERS = {
         { col: 'I', label: 'Lead Type',           source: 'variation:Lead Type', transform: 'leadTypeNormalize' },
         { col: 'J', label: 'Variation Type',      source: 'variation:Variation Type', transform: 'videoVariationType', note: "Variation Type: brief 'Lead' → tracker 'Hook'." },
         { col: 'K', label: 'CID',                 source: 'computed:cid' },
-        { col: 'L', label: 'Request Doc',         source: 'requestDoc' },
-        { col: 'M', label: 'Folder Link',         source: 'overview:Footage Folder|fallback:clientFolderUrl' },
+        { col: 'L', label: 'Request Doc',         source: 'requestDoc', renderAs: 'url' },
+        { col: 'M', label: 'Folder Link',         source: 'overview:Footage Folder|fallback:clientFolderUrl', renderAs: 'url' },
       ],
     },
     block2: {
@@ -100,8 +100,8 @@ export const TRACKERS = {
         { col: 'J', label: 'Lead Type',     source: 'variation:Lead Type', transform: 'leadTypeNormalize' },
         { col: 'K', label: 'Variation Type', source: 'variation:Variation Type' },
         { col: 'L', label: 'CPID',          source: 'blank', note: 'CPID (col L) left blank — tracker formula auto-generates.' },
-        { col: 'M', label: 'Request Doc',   source: 'requestDoc' },
-        { col: 'N', label: 'Folder Link',   source: 'clientFolderUrl' },
+        { col: 'M', label: 'Request Doc',   source: 'requestDoc', renderAs: 'url' },
+        { col: 'N', label: 'Folder Link',   source: 'clientFolderUrl', renderAs: 'url' },
       ],
     },
     block2: {

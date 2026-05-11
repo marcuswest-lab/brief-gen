@@ -179,6 +179,7 @@ export function parseBrief(text) {
   // Overview = lines after OVERVIEW until first variation
   const ovEnd = variationStarts.length > 0 ? variationStarts[0] : lines.length;
   const overview = parseFieldBlock(lines.slice(overviewStart + 1, ovEnd));
+  stripBracketPlaceholders(overview);
 
   // Each variation = lines from its marker (exclusive) to the next marker
   const variations = [];
@@ -186,14 +187,22 @@ export function parseBrief(text) {
     const start = variationStarts[vi] + 1;
     const end = vi + 1 < variationStarts.length ? variationStarts[vi + 1] : lines.length;
     const data = parseFieldBlock(lines.slice(start, end));
-    // Strip the placeholder "[as generated in the creative tracker]" / "[Any general notes]"
-    for (const [k, v] of Object.entries(data)) {
-      if (typeof v === 'string' && v.trim().startsWith('[') && v.trim().endsWith(']')) {
-        data[k] = '';
-      }
-    }
+    stripBracketPlaceholders(data);
     variations.push(data);
   }
 
   return { briefType, header, overview, variations };
+}
+
+/**
+ * Remove leftover template placeholders like "[the master picture folder for
+ * this brief, if any]" or "[Any general notes]". Treat any field value that
+ * starts with "[" and ends with "]" as a placeholder. Mutates in place.
+ */
+function stripBracketPlaceholders(obj) {
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string' && v.trim().startsWith('[') && v.trim().endsWith(']')) {
+      obj[k] = '';
+    }
+  }
 }

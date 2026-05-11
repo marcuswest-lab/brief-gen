@@ -536,13 +536,39 @@ function renderBlockPanel(title, block, subtitle) {
   const tbody = el('tbody');
   for (const row of block.rows) {
     const tr = el('tr');
-    for (const cell of row) {
+    row.forEach((cell, colIdx) => {
+      const hint = block.renderHints?.[colIdx];
+      const isEmpty = cell == null || cell === '';
       const td = el('td', { title: cell || '' });
-      td.textContent = cell == null || cell === '' ? '—' : String(cell);
-      if (cell === '' || cell == null) td.className = 'pm-empty-cell';
-      tbody.appendChild(tr);
+      if (isEmpty) {
+        td.textContent = '—';
+        td.className = 'pm-empty-cell';
+      } else if (hint?.renderAs === 'url' && /^https?:\/\//i.test(String(cell))) {
+        // Render URL as a compact link pill (text shows hostname + first segment)
+        const url = String(cell);
+        let label = url;
+        try {
+          const u = new URL(url);
+          // E.g. "drive.google.com/drive/u/1/folders/..." → "drive.google.com/folders/…"
+          const path = u.pathname.replace(/\/+$/, '');
+          const seg = path.split('/').filter(Boolean)[0] || '';
+          label = `${u.hostname}${seg ? '/' + seg : ''}`;
+          if (label.length > 32) label = label.slice(0, 31) + '…';
+        } catch {
+          label = url.length > 32 ? url.slice(0, 31) + '…' : url;
+        }
+        const a = el('a', {
+          href: url,
+          target: '_blank',
+          rel: 'noopener',
+          class: 'pm-url-pill',
+        }, '🔗 ' + label);
+        td.appendChild(a);
+      } else {
+        td.textContent = String(cell);
+      }
       tr.appendChild(td);
-    }
+    });
     tbody.appendChild(tr);
   }
   tbl.appendChild(tbody);
