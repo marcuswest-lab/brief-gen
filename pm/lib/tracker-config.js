@@ -20,7 +20,7 @@ export const TRACKERS = {
       fields: [
         { col: 'A', label: 'Created Date',         source: 'today' },
         { col: 'B', label: 'Launch Date',          source: 'blank' },
-        { col: 'C', label: 'Static Creative Name', source: 'variation:File Name' },
+        { col: 'C', label: 'Static Creative Name', source: 'blank', note: 'Static Creative Name (col C) left blank — tracker formula auto-generates it from File Name / Lead Type / CID.' },
         { col: 'D', label: 'Type',                 source: 'overview:Net New/Iteration' },
         { col: 'E', label: 'Status',               source: 'blank', note: STATUS_NOTE },
         { col: 'F', label: 'Winner Status',        source: 'blank' },
@@ -55,7 +55,7 @@ export const TRACKERS = {
       fields: [
         { col: 'A', label: 'Created Date',        source: 'today' },
         { col: 'B', label: 'Launch Date',         source: 'blank' },
-        { col: 'C', label: 'Video Creative Name', source: 'variation:File Name' },
+        { col: 'C', label: 'Video Creative Name', source: 'blank', note: 'Video Creative Name (col C) left blank — tracker formula auto-generates it from File Name / Lead Type / CID.' },
         { col: 'D', label: 'Type',                source: 'overview:Net New/Iteration' },
         { col: 'E', label: 'Status',              source: 'blank', note: STATUS_NOTE },
         { col: 'F', label: 'Winner Status',       source: 'blank' },
