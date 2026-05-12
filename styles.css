@@ -139,6 +139,70 @@ html, body {
   font-weight: 600;
 }
 
+.tab-quick-fill {
+  margin-left: auto;
+  color: #0a3d91;
+}
+
+.tab-quick-fill.active {
+  border-bottom-color: #0a3d91;
+}
+
+/* -------- Quick Fill panel -------- */
+
+.quick-fill-card {
+  border: 1px solid #b8d4ff;
+  background: linear-gradient(180deg, #f5f9ff 0%, #ffffff 50%);
+}
+
+.qf-help {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.qf-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: #fff;
+  resize: vertical;
+  min-height: 200px;
+}
+
+.qf-textarea:focus {
+  outline: none;
+  border-color: #888;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+.qf-detected {
+  margin: 8px 0 14px;
+  font-size: 12px;
+  color: #0a3d91;
+  font-weight: 500;
+}
+
+.qf-detected-empty {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.qf-detected-error {
+  color: var(--danger);
+}
+
+.qf-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .form-wrap {
   max-width: 1080px;
   margin: 24px auto;

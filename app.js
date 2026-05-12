@@ -3,6 +3,7 @@
 import { TEMPLATES, DROPDOWN_OPTIONS } from './lib/templates-config.js';
 import { generateBrief } from './lib/docx-filler.js';
 import { loadBriefs, upsertBrief, deleteBrief, getBrief, sortBriefsRecent, briefDisplayLabel } from './lib/brief-store.js';
+import { parseClaudeOutput } from './lib/claude-output-parser.js';
 
 const MAX_CREATIVES = 10;
 const STORAGE_KEY = 'pbg.formState.v1';
@@ -12,6 +13,8 @@ const PRESETS_STORAGE_KEY = 'pbg.presets.v1';
 // -------- App state --------
 const state = {
   briefType: 'static',          // 'static' | 'video' | 'copy'
+  quickFillOpen: false,         // when true, shows the Quick Fill paste panel above the form
+  quickFillText: '',
   clientId: null,
   clients: [],                  // loaded from clients.json + localStorage
   // Per-client overview-field presets. Shape:
@@ -37,6 +40,8 @@ function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       briefType: state.briefType,
+      quickFillOpen: state.quickFillOpen,
+      quickFillText: state.quickFillText,
       clientId: state.clientId,
       forms: state.forms,
     }));
@@ -52,6 +57,8 @@ function loadState() {
     const parsed = JSON.parse(raw);
     if (parsed.briefType) state.briefType = parsed.briefType;
     if (parsed.clientId) state.clientId = parsed.clientId;
+    if (parsed.quickFillOpen !== undefined) state.quickFillOpen = parsed.quickFillOpen;
+    if (parsed.quickFillText) state.quickFillText = parsed.quickFillText;
     if (parsed.forms) {
       for (const k of ['static', 'video', 'copy']) {
         if (parsed.forms[k]) state.forms[k] = parsed.forms[k];
@@ -819,6 +826,7 @@ function renderTabs() {
       class: 'tab-btn' + (state.briefType === key ? ' active' : ''),
       onclick: () => {
         state.briefType = key;
+        state.quickFillOpen = false;
         applyClientDefaults();
         saveState();
         renderForm();
@@ -826,6 +834,18 @@ function renderTabs() {
     }, cfg.label);
     wrap.appendChild(btn);
   }
+  // Quick Fill tab — opens an inline panel above the form
+  const qfBtn = el('button', {
+    type: 'button',
+    class: 'tab-btn tab-quick-fill' + (state.quickFillOpen ? ' active' : ''),
+    onclick: () => {
+      state.quickFillOpen = !state.quickFillOpen;
+      saveState();
+      renderForm();
+    },
+    title: 'Paste Claude/AI output and have it auto-fill the form',
+  }, '⚡ Quick Fill');
+  wrap.appendChild(qfBtn);
 }
 
 function renderField(def, value, onChange) {
@@ -963,8 +983,163 @@ function renderCreatives() {
 
 function renderForm() {
   renderTabs();
+  renderQuickFillPanel();
   renderOverview();
   renderCreatives();
+}
+
+function renderQuickFillPanel() {
+  // Render into a container right above the overview section. Create the
+  // container if it doesn't exist yet.
+  let wrap = document.getElementById('quick-fill-section');
+  if (!wrap) {
+    wrap = document.createElement('section');
+    wrap.id = 'quick-fill-section';
+    const overviewSection = document.getElementById('overview-section');
+    overviewSection.parentNode.insertBefore(wrap, overviewSection);
+  }
+  wrap.innerHTML = '';
+  if (!state.quickFillOpen) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = '';
+  wrap.className = 'card quick-fill-card';
+
+  wrap.appendChild(el('h2', {}, '⚡ Quick Fill'));
+  wrap.appendChild(el('p', { class: 'qf-help' },
+    'Paste a fully-written brief from Claude (or anywhere). The parser detects field labels like "Idea Name:", "Lead Type:", "Creative 1", etc., auto-detects whether it\'s a Static / Video / Body Copy brief, and fills the form below.'
+  ));
+
+  const ta = el('textarea', {
+    id: 'quick-fill-text',
+    class: 'qf-textarea',
+    rows: 14,
+    placeholder: 'Paste Claude\'s brief output here…\n\nExample:\nIdea Name: Quiet Overwhelm\nAngle Name: Cost Anchor\nTask: ...\n\nCreative 1\nFile Name: Quiet Overwhelm | SV8_Gmail\nVariation Type: Copy\nLead Type: Offer\nAwareness Level: Most Aware\nStatus: Ready For Internal\nCopy: ...',
+    oninput: (e) => {
+      state.quickFillText = e.target.value;
+      saveState();
+      // Live-preview the detected brief type without re-rendering the form
+      updateQuickFillDetectedLine();
+    },
+  });
+  ta.value = state.quickFillText;
+  wrap.appendChild(ta);
+
+  const detectedLine = el('div', { id: 'qf-detected-line', class: 'qf-detected' });
+  wrap.appendChild(detectedLine);
+
+  const actions = el('div', { class: 'qf-actions' });
+  actions.appendChild(el('button', {
+    type: 'button',
+    class: 'btn-secondary',
+    onclick: () => {
+      state.quickFillText = '';
+      saveState();
+      renderQuickFillPanel();
+    },
+  }, 'Clear'));
+  actions.appendChild(el('button', {
+    type: 'button',
+    class: 'btn-primary',
+    onclick: handleQuickFillParse,
+  }, 'Parse & fill form'));
+  wrap.appendChild(actions);
+
+  // Initial detection line
+  updateQuickFillDetectedLine();
+}
+
+function updateQuickFillDetectedLine() {
+  const lineEl = document.getElementById('qf-detected-line');
+  if (!lineEl) return;
+  lineEl.innerHTML = '';
+  if (!state.quickFillText.trim()) {
+    lineEl.className = 'qf-detected qf-detected-empty';
+    lineEl.textContent = 'Paste text to see what gets detected.';
+    return;
+  }
+  try {
+    const parsed = parseClaudeOutput(state.quickFillText);
+    const overviewCount = Object.keys(parsed.overview).length;
+    const creativeCount = parsed.creatives.length;
+    const typeLabel = parsed.briefType ? TEMPLATES[parsed.briefType].label : 'unknown';
+    lineEl.className = 'qf-detected';
+    lineEl.textContent = `Detected: ${typeLabel} brief · ${overviewCount} overview field${overviewCount === 1 ? '' : 's'} · ${creativeCount} creative${creativeCount === 1 ? '' : 's'}`;
+  } catch (e) {
+    lineEl.className = 'qf-detected qf-detected-error';
+    lineEl.textContent = 'Parse error: ' + e.message;
+  }
+}
+
+function handleQuickFillParse() {
+  if (!state.quickFillText.trim()) {
+    alert('Paste some brief text first.');
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = parseClaudeOutput(state.quickFillText);
+  } catch (e) {
+    alert('Parse error: ' + e.message);
+    return;
+  }
+
+  if (!parsed.briefType) {
+    if (!confirm("Couldn't detect brief type from the text. Apply to the currently-active brief type tab?")) return;
+    parsed.briefType = state.briefType;
+  }
+
+  if (parsed.creatives.length === 0 && Object.keys(parsed.overview).length === 0) {
+    alert('No recognized fields found in the pasted text. Make sure each field looks like "Idea Name: ..." on its own line.');
+    return;
+  }
+
+  // Check if target form already has data; confirm overwrite
+  const targetForm = state.forms[parsed.briefType];
+  const existingOverviewFilled = Object.values(targetForm.overview).filter(v => v != null && String(v).trim() !== '').length;
+  const existingCreativesFilled = targetForm.creatives.filter(c => Object.values(c).some(v => v != null && String(v).trim() !== '')).length;
+  if (existingOverviewFilled > 0 || existingCreativesFilled > 0) {
+    const ok = confirm(
+      `This will replace your current ${TEMPLATES[parsed.briefType].label} brief:\n\n` +
+      `- ${existingOverviewFilled} overview field${existingOverviewFilled === 1 ? '' : 's'} filled\n` +
+      `- ${existingCreativesFilled} creative${existingCreativesFilled === 1 ? '' : 's'} filled\n\n` +
+      `Continue?`
+    );
+    if (!ok) return;
+  }
+
+  // Apply: switch to the detected brief type, replace overview + creatives
+  state.briefType = parsed.briefType;
+  state.forms[parsed.briefType] = {
+    overview: { ...parsed.overview },
+    creatives: parsed.creatives.length > 0 ? parsed.creatives : [{}],
+    activePresetId: null,
+    loadedBriefId: null,
+  };
+  // Re-apply client defaults to fill any blanks (e.g. Copywriter)
+  applyClientDefaults();
+
+  // Close Quick Fill panel + re-render
+  state.quickFillOpen = false;
+  saveState();
+  renderClientPicker();
+  renderForm();
+
+  const status = document.getElementById('status');
+  if (status) {
+    const ovCount = Object.keys(parsed.overview).length;
+    const crCount = parsed.creatives.length;
+    status.className = 'success';
+    status.textContent = `✓ Filled ${TEMPLATES[parsed.briefType].label} brief: ${ovCount} overview field${ovCount === 1 ? '' : 's'}, ${crCount} creative${crCount === 1 ? '' : 's'}.`;
+    setTimeout(() => {
+      if (status.textContent.startsWith('✓ Filled')) {
+        status.textContent = '';
+        status.className = '';
+      }
+    }, 5000);
+  }
 }
 
 // -------- Validation + Generate --------
