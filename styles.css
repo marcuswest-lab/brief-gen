@@ -203,6 +203,77 @@ html, body {
   gap: 10px;
 }
 
+/* -------- Quick Fill review modal -------- */
+
+.quick-fill-review-dialog {
+  max-width: 640px;
+}
+
+.qfr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.qfr-item {
+  border: 1px solid #f0deaf;
+  background: #fff8e6;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.qfr-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.qfr-scope-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #5a3a00;
+  color: #fff8e6;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.qfr-original {
+  font-size: 12px;
+  color: #5a3a00;
+  margin-bottom: 8px;
+}
+
+.qfr-original code {
+  background: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  border: 1px solid #f0deaf;
+  color: var(--text);
+}
+
+.qfr-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  font-family: inherit;
+}
+
+.qfr-select:focus {
+  outline: none;
+  border-color: #888;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
 .form-wrap {
   max-width: 1080px;
   margin: 24px auto;

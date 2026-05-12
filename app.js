@@ -1110,7 +1110,16 @@ function handleQuickFillParse() {
     if (!ok) return;
   }
 
-  // Apply: switch to the detected brief type, replace overview + creatives
+  // If there are dropdown-value warnings, open the review modal first.
+  // Otherwise, apply directly.
+  if (parsed.warnings && parsed.warnings.length > 0) {
+    openQuickFillReviewModal(parsed);
+  } else {
+    applyParsedBrief(parsed);
+  }
+}
+
+function applyParsedBrief(parsed) {
   state.briefType = parsed.briefType;
   state.forms[parsed.briefType] = {
     overview: { ...parsed.overview },
@@ -1118,10 +1127,7 @@ function handleQuickFillParse() {
     activePresetId: null,
     loadedBriefId: null,
   };
-  // Re-apply client defaults to fill any blanks (e.g. Copywriter)
   applyClientDefaults();
-
-  // Close Quick Fill panel + re-render
   state.quickFillOpen = false;
   saveState();
   renderClientPicker();
@@ -1140,6 +1146,102 @@ function handleQuickFillParse() {
       }
     }, 5000);
   }
+}
+
+/**
+ * Show a modal listing every dropdown value that didn't match a valid
+ * option. For each warning, the user picks the corrected value (suggested
+ * fuzzy match pre-selected) or chooses "Leave blank" to skip the field.
+ * On Apply, the warnings are resolved into the parsed object and the form
+ * is filled.
+ */
+function openQuickFillReviewModal(parsed) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  // Decisions: { warningIndex: 'suggestion-value' | '' (leave blank) | 'keep-as-is' (keep original) }
+  // Default: pick the suggestion if present; otherwise leave blank.
+  const decisions = parsed.warnings.map(w => w.suggestion || '');
+
+  const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) close(); } });
+  const dialog = el('div', { class: 'modal-dialog quick-fill-review-dialog' });
+
+  dialog.appendChild(el('div', { class: 'modal-header' },
+    el('h2', {}, `Review ${parsed.warnings.length} dropdown value${parsed.warnings.length === 1 ? '' : 's'}`),
+    el('button', { type: 'button', class: 'modal-close', onclick: close, title: 'Cancel' }, '×'),
+  ));
+
+  const body = el('div', { class: 'modal-body' });
+  body.appendChild(el('p', { class: 'modal-hint' },
+    `Some pasted values don't match valid dropdown options. Pick the correct option for each (suggested closest match is pre-selected), or choose "Leave blank" to clear the field.`
+  ));
+
+  const list = el('div', { class: 'qfr-list' });
+  parsed.warnings.forEach((w, i) => {
+    const item = el('div', { class: 'qfr-item' });
+
+    // Title row: field + scope
+    const scopeLabel = w.scope === 'creative' ? `Creative ${w.creativeIndex + 1}` : 'Overview';
+    item.appendChild(el('div', { class: 'qfr-title' },
+      el('span', { class: 'qfr-scope-tag' }, scopeLabel),
+      el('strong', {}, w.field),
+    ));
+
+    // Original value
+    item.appendChild(el('div', { class: 'qfr-original' },
+      'Pasted value: ',
+      el('code', {}, w.originalValue),
+    ));
+
+    // Picker
+    const sel = el('select', {
+      class: 'qfr-select',
+      onchange: (e) => { decisions[i] = e.target.value; },
+    });
+    sel.appendChild(el('option', { value: '' }, '— leave blank —'));
+    for (const opt of w.options) {
+      const optEl = el('option', { value: opt }, opt + (opt === w.suggestion ? ' (suggested)' : ''));
+      if (opt === decisions[i]) optEl.setAttribute('selected', '');
+      sel.appendChild(optEl);
+    }
+    item.appendChild(sel);
+
+    list.appendChild(item);
+  });
+  body.appendChild(list);
+  dialog.appendChild(body);
+
+  dialog.appendChild(el('div', { class: 'modal-footer' },
+    el('button', { type: 'button', class: 'btn-secondary', onclick: close }, 'Cancel'),
+    el('button', { type: 'button', class: 'btn-primary', onclick: () => {
+      // Resolve each warning into the parsed object
+      parsed.warnings.forEach((w, i) => {
+        const picked = decisions[i] || '';  // empty = clear field
+        if (w.scope === 'overview') {
+          if (picked) parsed.overview[w.field] = picked;
+          else delete parsed.overview[w.field];
+        } else {
+          const c = parsed.creatives[w.creativeIndex];
+          if (c) {
+            if (picked) c[w.field] = picked;
+            else delete c[w.field];
+          }
+        }
+      });
+      close();
+      applyParsedBrief(parsed);
+    }}, 'Apply corrections & fill form'),
+  ));
+
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
 }
 
 // -------- Validation + Generate --------
