@@ -2,7 +2,7 @@
 
 import { TEMPLATES, DROPDOWN_OPTIONS } from './lib/templates-config.js';
 import { generateBrief } from './lib/docx-filler.js';
-import { loadBriefs, upsertBrief, deleteBrief, getBrief, sortBriefsRecent, briefDisplayLabel } from './lib/brief-store.js';
+import { loadBriefs, upsertBrief, deleteBrief, getBrief, sortBriefsRecent, briefDisplayLabel, buildBriefFilename } from './lib/brief-store.js';
 import { parseClaudeOutput } from './lib/claude-output-parser.js';
 
 const MAX_CREATIVES = 10;
@@ -1305,15 +1305,12 @@ async function handleGenerate() {
       templateBuffer,
     });
 
-    // Filename: {Client}_{BriefType}_{Idea Name}_{YYYY-MM-DD}.docx
-    const safe = (s) => String(s || '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_').slice(0, 60);
-    const today = new Date().toISOString().slice(0, 10);
-    const filename = [
-      safe(client.name) || 'Client',
-      config.label.replace(/\s+/g, ''),
-      safe(ov['Idea Name']) || 'Brief',
-      today,
-    ].join('_') + '.docx';
+    // Filename: "Dan Henry Video Brief | The Script Is the Business | 2026-05-12.docx"
+    const filename = buildBriefFilename({
+      clientName: client.name,
+      briefType: state.briefType,
+      ideaName: ov['Idea Name'],
+    });
 
     saveAs(blob, filename);
 

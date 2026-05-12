@@ -3,7 +3,7 @@
 import { parseBrief, detectBriefType } from './lib/brief-parser.js';
 import { mapBriefToTracker, blockToTSV } from './lib/tracker-mapper.js';
 import { TRACKERS } from './lib/tracker-config.js';
-import { loadBriefs, getBrief, upsertBrief, sortBriefsRecent, briefDisplayLabel } from '../lib/brief-store.js';
+import { loadBriefs, getBrief, upsertBrief, sortBriefsRecent, briefDisplayLabel, buildBriefFilename } from '../lib/brief-store.js';
 import { TEMPLATES } from '../lib/templates-config.js';
 import { generateBrief } from '../lib/docx-filler.js';
 
@@ -793,15 +793,12 @@ async function handleRegenWithNames() {
       templateBuffer,
     });
 
-    const safe = (s) => String(s || '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_').slice(0, 60);
-    const today = new Date().toISOString().slice(0, 10);
-    const filename = [
-      safe(brief.clientName) || 'Client',
-      config.label.replace(/\s+/g, ''),
-      safe(brief.ideaName) || 'Brief',
-      'with-names',
-      today,
-    ].join('_') + '.docx';
+    const filename = buildBriefFilename({
+      clientName: brief.clientName,
+      briefType: brief.briefType,
+      ideaName: brief.ideaName,
+      suffix: 'with names',
+    });
 
     saveAs(blob, filename);
     flashStatus(`✓ Regenerated ${filename} (${Math.min(names.length, brief.creatives.length)} names baked in).`);
