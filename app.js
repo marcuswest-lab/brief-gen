@@ -4,7 +4,7 @@ import { TEMPLATES, DROPDOWN_OPTIONS } from './lib/templates-config.js';
 import { generateBrief } from './lib/docx-filler.js';
 import { loadBriefs, upsertBrief, deleteBrief, getBrief, sortBriefsRecent, briefDisplayLabel } from './lib/brief-store.js';
 
-const MAX_CREATIVES = 5;
+const MAX_CREATIVES = 10;
 const STORAGE_KEY = 'pbg.formState.v1';
 const CLIENTS_STORAGE_KEY = 'pbg.localClients.v1';
 const PRESETS_STORAGE_KEY = 'pbg.presets.v1';
