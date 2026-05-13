@@ -20,6 +20,21 @@
   font-style: italic;
 }
 
+.pm-warn-banner {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: #fff8e6;
+  border: 1px solid #f0deaf;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #5a3a00;
+  line-height: 1.55;
+}
+
+.pm-warn-banner strong {
+  color: #5a3a00;
+}
+
 .pm-source-toggle {
   display: inline-flex;
   border: 1px solid var(--border);

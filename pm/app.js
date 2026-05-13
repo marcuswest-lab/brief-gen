@@ -255,6 +255,15 @@ function renderBriefToTracker() {
     }
   } else {
     // Paste-text mode (manual upload)
+    if (hasSaved) {
+      card.appendChild(el('div', { class: 'pm-warn-banner' },
+        el('strong', {}, '⚠️ Heads up: '),
+        'Google Docs strips dropdown values (Variation Type, Awareness Level, Lead Type, Status) when you copy-paste. ',
+        'For Briefgen-generated briefs, switch to ',
+        el('strong', {}, 'Saved brief'),
+        ' instead — it reads the actual brief data and keeps every field.',
+      ));
+    }
     const detectedType = state.briefTypeOverride || (state.briefText ? detectBriefType(state.briefText) : null);
     const detectionLine = detectedType
       ? el('div', { class: 'pm-detect' }, `Detected brief type: `, el('strong', {}, TRACKERS[detectedType]?.label || detectedType))
