@@ -62,6 +62,18 @@
       "defaults": {
         "Copywriter": "Nate Weeks",
         "Ad Platform": "Meta"
+      },
+      "tracker_overrides": {
+        "video": {
+          "block1": {
+            "insert": [
+              { "after": "Launch Date", "label": "Launch Date - Google" }
+            ]
+          },
+          "block2": {
+            "startCol": "W"
+          }
+        }
       }
     },
     {

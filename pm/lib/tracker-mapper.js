@@ -122,15 +122,22 @@ function formatDate(d) {
  *
  * Override schema (per tracker type):
  *   {
- *     block1: { drop?: ['Winner Status', ...], replaceFields?: [...] },
- *     block2: { drop?: [...], replaceFields?: [...] },
+ *     block1: {
+ *       drop?: ['Winner Status', ...],   // remove named fields
+ *       insert?: [                       // insert blank columns at positions
+ *         { after: 'Launch Date', label: 'Launch Date - Google' }
+ *       ],
+ *       replaceFields?: [...],           // full replacement (rare)
+ *     },
+ *     block2: {
+ *       startCol?: 'W',                  // override starting column letter
+ *       drop?: [...],
+ *       insert?: [...],
+ *       replaceFields?: [...],
+ *     },
  *   }
  *
- * `drop` removes named fields from a block. After dropping, columns shift
- * left automatically (col letters get re-stamped A,B,C,...).
- *
- * `replaceFields` (rare) lets you provide a custom field array for that
- * block, used when the override is more than just deletions.
+ * After mutations, all column letters in a block re-stamp from startCol.
  */
 function applyTrackerOverride(baseCfg, override) {
   if (!override) return baseCfg;
@@ -147,10 +154,19 @@ function applyTrackerOverride(baseCfg, override) {
       const dropSet = new Set(overrideBlock.drop);
       fields = fields.filter(f => !dropSet.has(f.label));
     }
-    // Re-stamp column letters starting from baseBlock.startCol
-    const startCol = baseBlock.startCol;
+    if (overrideBlock.insert && overrideBlock.insert.length > 0) {
+      // Insert in order; each insert is { after: '<label>', label: '<new label>', source?: 'blank' }
+      for (const ins of overrideBlock.insert) {
+        const idx = fields.findIndex(f => f.label === ins.after);
+        if (idx < 0) continue; // anchor not found, skip
+        const newField = { col: '', label: ins.label, source: ins.source || 'blank' };
+        fields = [...fields.slice(0, idx + 1), newField, ...fields.slice(idx + 1)];
+      }
+    }
+    // Re-stamp column letters starting from override.startCol or base.startCol
+    const startCol = overrideBlock.startCol || baseBlock.startCol;
     fields = fields.map((f, i) => ({ ...f, col: addColLetters(startCol, i) }));
-    newCfg[blockName] = { ...baseBlock, fields };
+    newCfg[blockName] = { ...baseBlock, startCol, fields };
   }
   return newCfg;
 }
