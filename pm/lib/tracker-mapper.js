@@ -97,6 +97,9 @@ function resolveSource(source, variation, ctx) {
   }
   if (source.startsWith('overview:')) {
     const key = source.slice('overview:'.length);
+    // Per-variation override: Ad Categorizer fills these per ad. If the
+    // variation has a value, prefer it over the brief-level overview.
+    if (variation && variation[key] != null && variation[key] !== '') return variation[key];
     return ctx.overview[key] || '';
   }
   if (source.startsWith('variation:')) {
