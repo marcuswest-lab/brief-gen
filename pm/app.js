@@ -577,6 +577,21 @@ function renderResultPanel(result) {
     ));
   }
 
+  // Row → filename map (Ad Categorizer only — set on the result object)
+  if (result.adCatFilenames && result.adCatFilenames.length > 0) {
+    const mapPanel = el('div', { class: 'pm-filename-map' });
+    mapPanel.appendChild(el('h3', {}, 'Row → Filename'));
+    mapPanel.appendChild(el('p', { class: 'pm-help', style: 'margin: 0 0 8px; font-size: 12px' },
+      'Below shows which filename produced each output row, in paste order. The filenames are NOT pasted into the tracker — this is just for reference.'
+    ));
+    const list = el('ol', { class: 'pm-filename-list' });
+    for (const name of result.adCatFilenames) {
+      list.appendChild(el('li', { title: name }, name));
+    }
+    mapPanel.appendChild(list);
+    card.appendChild(mapPanel);
+  }
+
   // Block 1
   card.appendChild(renderBlockPanel('Block 1', result.block1, `Paste at column ${result.block1.startCol}`));
   // Block 2
@@ -1044,24 +1059,87 @@ function renderAdCategorizer() {
 function renderAdCatPreview() {
   const card = el('div', { class: 'card' });
   const header = el('div', { class: 'pm-block-header' },
-    el('h3', {}, `${state.adCatGroups.length} unique creative${state.adCatGroups.length === 1 ? '' : 's'} (${state.adCatGroups.reduce((a, g) => a + g.files.length, 0)} files)`),
-    el('button', {
-      type: 'button',
-      class: 'btn-secondary btn-small',
-      onclick: () => {
-        if (state.adCatRunning) return;
-        state.adCatGroups = [];
-        state.adCatResult = null;
-        renderAdCategorizer();
-      },
-      disabled: state.adCatRunning ? '' : null,
-    }, 'Clear'),
+    el('div', {},
+      el('h3', { style: 'margin: 0' }, `${state.adCatGroups.length} unique creative${state.adCatGroups.length === 1 ? '' : 's'} (${state.adCatGroups.reduce((a, g) => a + g.files.length, 0)} files)`),
+      el('div', { class: 'pm-help', style: 'margin-top: 4px; font-size: 12px' },
+        state.adCatRunning
+          ? 'Categorizing… please wait.'
+          : 'Drag tiles to reorder. The output rows will follow this order.',
+      ),
+    ),
+    el('div', { style: 'display: flex; gap: 8px' },
+      el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        onclick: () => {
+          if (state.adCatRunning) return;
+          // Sort by filename A→Z (parsed baseName)
+          state.adCatGroups.sort((a, b) => a.parsed.baseName.localeCompare(b.parsed.baseName));
+          renderAdCategorizer();
+        },
+        disabled: state.adCatRunning ? '' : null,
+        title: 'Sort tiles alphabetically by filename',
+      }, 'Sort A→Z'),
+      el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        onclick: () => {
+          if (state.adCatRunning) return;
+          state.adCatGroups = [];
+          state.adCatResult = null;
+          renderAdCategorizer();
+        },
+        disabled: state.adCatRunning ? '' : null,
+      }, 'Clear'),
+    ),
   );
   card.appendChild(header);
 
   const grid = el('div', { class: 'ad-cat-grid' });
   state.adCatGroups.forEach((g, idx) => {
-    const tile = el('div', { class: 'ad-cat-tile ad-cat-tile-' + (g.status || 'pending') });
+    const tile = el('div', {
+      class: 'ad-cat-tile ad-cat-tile-' + (g.status || 'pending'),
+      draggable: state.adCatRunning ? null : 'true',
+      'data-index': String(idx),
+    });
+
+    // Drag handlers
+    tile.addEventListener('dragstart', (e) => {
+      if (state.adCatRunning) return;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(idx));
+      tile.classList.add('ad-cat-tile-dragging');
+    });
+    tile.addEventListener('dragend', () => {
+      tile.classList.remove('ad-cat-tile-dragging');
+      // Clean up any leftover dragover styling
+      grid.querySelectorAll('.ad-cat-tile-dropbefore').forEach(el => el.classList.remove('ad-cat-tile-dropbefore'));
+    });
+    tile.addEventListener('dragover', (e) => {
+      if (state.adCatRunning) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      tile.classList.add('ad-cat-tile-dropbefore');
+    });
+    tile.addEventListener('dragleave', () => {
+      tile.classList.remove('ad-cat-tile-dropbefore');
+    });
+    tile.addEventListener('drop', (e) => {
+      if (state.adCatRunning) return;
+      e.preventDefault();
+      tile.classList.remove('ad-cat-tile-dropbefore');
+      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const toIdx = idx;
+      if (Number.isNaN(fromIdx) || fromIdx === toIdx) return;
+      const arr = state.adCatGroups;
+      const [moved] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, moved);
+      renderAdCategorizer();
+    });
+
+    // Position indicator (Row N) — useful when planning paste order
+    const posBadge = el('div', { class: 'ad-cat-pos' }, `Row ${idx + 1}`);
+    tile.appendChild(posBadge);
 
     // Thumbnail (use first file from group as representative).
     // For video files, render a <video> element (poster = first frame, no controls).
@@ -1308,6 +1386,8 @@ async function handleAdCatCategorize() {
       notes.push(`${effectiveClient.name} typically supplies Idea Name, Angle Name, and Image Style themselves — review and clear those columns before pasting if you don't want to overwrite the client's data.`);
     }
     result.notes = notes;
+    // Attach the row-by-row filename mapping so the result panel can show it
+    result.adCatFilenames = successful.map(g => g.parsed.baseName);
     state.adCatResult = result;
   } catch (e) {
     flashStatus('Mapping error: ' + e.message, 'error');
