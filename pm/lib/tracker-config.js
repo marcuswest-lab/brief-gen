@@ -62,7 +62,7 @@ export const TRACKERS = {
         { col: 'G', label: 'Platform',            source: 'literal:Meta', note: PLATFORM_NOTE },
         { col: 'H', label: 'Awareness Level',     source: 'variation:Awareness Level' },
         { col: 'I', label: 'Lead Type',           source: 'variation:Lead Type', transform: 'leadTypeNormalize' },
-        { col: 'J', label: 'Variation Type',      source: 'variation:Variation Type', transform: 'videoVariationType', note: "Variation Type: brief 'Lead' → tracker 'Hook'." },
+        { col: 'J', label: 'Variation Type',      source: 'variation:Variation Type', transform: 'videoVariationType', note: "Variation Type passes through Lead / Pattern Interrupt / Body / CTA." },
         { col: 'K', label: 'CID',                 source: 'computed:cid' },
         { col: 'L', label: 'Request Doc',         source: 'requestDoc', renderAs: 'url' },
         { col: 'M', label: 'Folder Link',         source: 'overview:Footage Folder|fallback:clientFolderUrl', renderAs: 'url' },
@@ -139,15 +139,13 @@ export function leadTypeNormalize(value) {
 // Static tracker dropdown accepts: Copy, Visual (the brief uses the same set,
 // so this is mostly a passthrough with case-correction).
 const STATIC_VARIATION_VALID = ['Copy', 'Visual'];
-// Video tracker dropdown accepts these — brief uses Lead which we map to Hook
-// (the original brief→tracker convention).
-const VIDEO_VARIATION_REMAP = {
-  'lead': 'Hook',
-  'hook': 'Hook',
-  'pattern interrupt': 'Pattern Interupt',
-  'pattern interupt': 'Pattern Interupt',
-  'body': 'Body',
-  'cta': 'CTA',
+// Video tracker dropdown accepts these values across BAD Marketing clients.
+// We pass them through with case correction; older briefs may have said "Hook"
+// (legacy) so map that to "Lead" for forward compatibility.
+const VIDEO_VARIATION_VALID = ['Lead', 'Pattern Interrupt', 'Body', 'CTA'];
+const VIDEO_VARIATION_LEGACY = {
+  'hook': 'Lead',         // legacy brief\u2192tracker spec used Hook; tracker now uses Lead
+  'pattern interupt': 'Pattern Interrupt', // common typo in earlier configs
 };
 
 export function staticVariationType(value) {
@@ -162,7 +160,12 @@ export function staticVariationType(value) {
 export function videoVariationType(value) {
   if (!value) return '';
   const v = String(value).trim().toLowerCase();
-  return VIDEO_VARIATION_REMAP[v] || '';
+  // Direct case-insensitive match against valid values
+  for (const valid of VIDEO_VARIATION_VALID) {
+    if (v === valid.toLowerCase()) return valid;
+  }
+  // Legacy aliases (Hook → Lead, etc.)
+  return VIDEO_VARIATION_LEGACY[v] || '';
 }
 
 export const TRANSFORMS = {
