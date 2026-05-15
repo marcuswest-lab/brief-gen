@@ -98,9 +98,98 @@ function mediaTypeFor(filename) {
   return 'image/png';
 }
 
+// -------- Video keyframe extraction --------
+
+const NUM_KEYFRAMES = 5;
+const VIDEO_FRAME_MAX_DIM = 1024; // px — cap to keep token cost reasonable
+
+/**
+ * Returns true if file appears to be a video by extension.
+ */
+export function isVideoFile(file) {
+  if (!file?.name) return false;
+  return /\.(mp4|mov|webm|m4v|avi)$/i.test(file.name);
+}
+
+/**
+ * Extract N evenly-spaced keyframes from a video file.
+ * Returns { duration: seconds, frames: Array<{ base64, mediaType, timestamp }> }.
+ */
+export async function extractKeyframes(file, numFrames = NUM_KEYFRAMES) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url;
+
+    let duration = 0;
+    let canvas = null;
+    let ctx = null;
+
+    const cleanup = () => URL.revokeObjectURL(url);
+
+    video.addEventListener('loadedmetadata', () => {
+      duration = video.duration || 0;
+      if (!isFinite(duration) || duration <= 0) {
+        cleanup();
+        return reject(new Error('Could not read video duration'));
+      }
+      // Compute scaled canvas size (preserve aspect ratio, cap longest side)
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 360;
+      const scale = Math.min(1, VIDEO_FRAME_MAX_DIM / Math.max(vw, vh));
+      const cw = Math.round(vw * scale);
+      const ch = Math.round(vh * scale);
+      canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      ctx = canvas.getContext('2d');
+      // Compute timestamps: start, evenly spaced, end (slightly inside bounds)
+      const timestamps = [];
+      for (let i = 0; i < numFrames; i++) {
+        const t = (duration * (i + 0.5)) / numFrames;
+        timestamps.push(Math.min(Math.max(t, 0.05), duration - 0.05));
+      }
+      sampleNext(0, timestamps, []);
+    });
+
+    function sampleNext(idx, timestamps, frames) {
+      if (idx >= timestamps.length) {
+        cleanup();
+        return resolve({ duration, frames });
+      }
+      const onSeek = () => {
+        video.removeEventListener('seeked', onSeek);
+        try {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // JPEG keeps file size much smaller than PNG for photo-like frames
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+          frames.push({ base64, mediaType: 'image/jpeg', timestamp: timestamps[idx] });
+          sampleNext(idx + 1, timestamps, frames);
+        } catch (e) {
+          cleanup();
+          reject(e);
+        }
+      };
+      video.addEventListener('seeked', onSeek, { once: true });
+      video.currentTime = timestamps[idx];
+    }
+
+    video.addEventListener('error', () => {
+      cleanup();
+      reject(new Error('Video decode failed'));
+    });
+  });
+}
+
 // -------- Categorization prompt --------
 
-const SYSTEM_PROMPT = `You categorize static ad creatives for the BAD Marketing Creative Tracker. Return STRICT JSON, nothing else, no markdown fences.`;
+const SYSTEM_PROMPT = `You categorize ad creatives for the BAD Marketing Creative Tracker. Return STRICT JSON, nothing else, no markdown fences.`;
+
+const VIDEO_SYSTEM_PROMPT = `You categorize video ad creatives for the BAD Marketing Creative Tracker. You will be shown 5 keyframes sampled across the video's duration (start, 25%, 50%, 75%, end). Use them together to understand the ad's narrative arc. Return STRICT JSON, nothing else, no markdown fences.`;
 
 function buildUserPrompt(filename, filenameHints) {
   let hintsBlock = '';

@@ -28,7 +28,7 @@ export const TRACKERS = {
         { col: 'H', label: 'Static Format',        source: 'literal:Single Static', note: "Static Format defaulted to 'Single Static'. Change manually for carousels." },
         { col: 'I', label: 'Awareness Level',      source: 'variation:Awareness Level' },
         { col: 'J', label: 'Lead Type',            source: 'variation:Lead Type', transform: 'leadTypeNormalize' },
-        { col: 'K', label: 'Variation Type',       source: 'variation:Variation Type', transform: 'staticVariationType', note: "Variation Type: brief 'Lead' → tracker 'Hook'. Brief 'Visual'/'Copy' don't map (left blank)." },
+        { col: 'K', label: 'Variation Type',       source: 'variation:Variation Type', transform: 'staticVariationType', note: "Variation Type passes through Copy / Visual; other values left blank." },
         { col: 'L', label: 'CID',                  source: 'computed:cid' },
         { col: 'M', label: 'Request Doc',          source: 'requestDoc', renderAs: 'url' },
         { col: 'N', label: 'Folder Link',          source: 'overview:Photo Folder|fallback:clientFolderUrl', renderAs: 'url' },
@@ -136,7 +136,12 @@ export function leadTypeNormalize(value) {
   return v;
 }
 
-const STATIC_VARIATION_REMAP = {
+// Static tracker dropdown accepts: Copy, Visual (the brief uses the same set,
+// so this is mostly a passthrough with case-correction).
+const STATIC_VARIATION_VALID = ['Copy', 'Visual'];
+// Video tracker dropdown accepts these — brief uses Lead which we map to Hook
+// (the original brief→tracker convention).
+const VIDEO_VARIATION_REMAP = {
   'lead': 'Hook',
   'hook': 'Hook',
   'pattern interrupt': 'Pattern Interupt',
@@ -148,14 +153,16 @@ const STATIC_VARIATION_REMAP = {
 export function staticVariationType(value) {
   if (!value) return '';
   const v = String(value).trim().toLowerCase();
-  if (v === 'visual' || v === 'copy') return ''; // brief-only types — leave blank
-  return STATIC_VARIATION_REMAP[v] || '';
+  for (const valid of STATIC_VARIATION_VALID) {
+    if (v === valid.toLowerCase()) return valid;
+  }
+  return ''; // unknown value → leave blank
 }
 
 export function videoVariationType(value) {
   if (!value) return '';
   const v = String(value).trim().toLowerCase();
-  return STATIC_VARIATION_REMAP[v] || '';
+  return VIDEO_VARIATION_REMAP[v] || '';
 }
 
 export const TRANSFORMS = {
