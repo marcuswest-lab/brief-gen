@@ -1150,7 +1150,12 @@ function renderAdCatPreview() {
         muted: true,
         playsinline: true,
         preload: 'metadata',
+        disablePictureInPicture: true,
       });
+      // Explicitly disable browser controls (they sometimes show even when
+      // 'controls' attr is absent if the user has accessibility settings on)
+      vid.controls = false;
+      vid.removeAttribute('controls');
       vid.src = URL.createObjectURL(repFile);
       vid.onloadedmetadata = () => {
         // Seek to first frame for the poster
@@ -1165,7 +1170,10 @@ function renderAdCatPreview() {
     }
 
     const meta = el('div', { class: 'ad-cat-meta' });
-    meta.appendChild(el('div', { class: 'ad-cat-filename', title: g.parsed.baseName }, truncate(g.parsed.baseName, 40)));
+    // Show the full filename of the representative file (with extension)
+    // so the PM can verify which file is which.
+    const displayName = repFile.name;
+    meta.appendChild(el('div', { class: 'ad-cat-filename', title: displayName }, displayName));
     const tags = el('div', { class: 'ad-cat-tags' });
     if (g.parsed.cid) tags.appendChild(el('span', { class: 'ad-cat-tag ad-cat-tag-cid' }, g.parsed.cid));
     if (g.ratios.length > 0) tags.appendChild(el('span', { class: 'ad-cat-tag' }, g.ratios.join(' + ')));

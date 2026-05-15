@@ -101,6 +101,23 @@
   object-fit: cover;
   background: #fafafa;
   border-bottom: 1px solid var(--border);
+  pointer-events: none;
+}
+
+video.ad-cat-thumb {
+  /* Hide any browser-injected video chrome (controls, timecode, etc.) */
+  pointer-events: none;
+}
+
+video.ad-cat-thumb::-webkit-media-controls,
+video.ad-cat-thumb::-webkit-media-controls-panel,
+video.ad-cat-thumb::-webkit-media-controls-play-button,
+video.ad-cat-thumb::-webkit-media-controls-current-time-display,
+video.ad-cat-thumb::-webkit-media-controls-time-remaining-display,
+video.ad-cat-thumb::-webkit-media-controls-timeline,
+video.ad-cat-thumb::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  -webkit-appearance: none;
 }
 
 .ad-cat-meta {
@@ -108,13 +125,19 @@
 }
 
 .ad-cat-filename {
-  font-size: 11px;
+  font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  /* Wrap to multiple lines so long filenames stay visible */
+  word-break: break-all;
+  line-height: 1.3;
   margin-bottom: 6px;
+  /* Cap to 2 lines with ellipsis */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .ad-cat-tags {
