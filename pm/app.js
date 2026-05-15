@@ -366,7 +366,8 @@ function renderClientSelectorCard() {
     onchange: (e) => {
       state.clientId = e.target.value || null;
       saveState();
-      renderBriefToTracker();
+      // Re-render whichever tab is active (renderAll dispatches by state.tab)
+      renderAll();
     },
   });
   sel.appendChild(el('option', { value: '' }, '— auto-detect from brief —'));
