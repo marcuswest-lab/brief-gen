@@ -8,7 +8,8 @@ import { TEMPLATES } from '../lib/templates-config.js';
 import { generateBrief } from '../lib/docx-filler.js';
 import { parseAdFilename, groupAdFiles, pickRepresentativeFile } from './lib/filename-parser.js';
 import {
-  getApiKey, setApiKey, getModel, setModel, getConcurrency, setConcurrency,
+  getApiKey, setApiKey, getOpenAIKey, setOpenAIKey,
+  getModel, setModel, getConcurrency, setConcurrency,
   testApiKey, analyzeBatch, estimateCost, isVideoFile,
   DEFAULT_MODEL, SONNET_MODEL, OPUS_MODEL,
 } from './lib/ad-analyzer.js';
@@ -1202,8 +1203,14 @@ function renderAdCatActions() {
   const cost = estimateCost(numItems, undefined, isVideo ? 'video' : 'static');
   const costStr = `≈$${cost.toFixed(2)}`;
 
+  const hasOpenAI = !!getOpenAIKey();
+  const transcriptHint = isVideo
+    ? (hasOpenAI
+        ? ' Audio will be transcribed via Whisper (~$0.006/min) for better Lead Type accuracy.'
+        : ' ⚠️ No OpenAI key set — Lead Type accuracy will be lower without audio transcription. Add a key in Settings.')
+    : '';
   const detail = isVideo
-    ? `Each video has 5 keyframes extracted in your browser, then sent together to Claude.`
+    ? `Each video has 5 keyframes extracted in your browser, then sent together to Claude.${transcriptHint}`
     : `Each ad gets a separate API call to Claude vision.`;
 
   const info = el('p', { class: 'pm-help' },
@@ -1452,6 +1459,30 @@ function openSettingsModal() {
   keyField.appendChild(showHide);
   body.appendChild(keyField);
 
+  // OpenAI key (for video transcription via Whisper)
+  const openaiField = el('div', { class: 'pm-input-field', style: 'margin-top: 14px' });
+  openaiField.appendChild(el('label', { for: 'settings-openai-key' },
+    'OpenAI API Key',
+    el('span', { class: 'pm-hint-inline' }, ' (optional — used to transcribe video audio for better Lead Type accuracy)')));
+  const openaiInput = el('input', {
+    id: 'settings-openai-key',
+    type: 'password',
+    placeholder: 'sk-...',
+  });
+  openaiInput.value = getOpenAIKey();
+  openaiField.appendChild(openaiInput);
+  const openaiShowHide = el('button', {
+    type: 'button',
+    class: 'btn-secondary btn-small',
+    style: 'margin-top: 4px',
+    onclick: () => {
+      openaiInput.type = openaiInput.type === 'password' ? 'text' : 'password';
+      openaiShowHide.textContent = openaiInput.type === 'password' ? '👁 Show' : '🙈 Hide';
+    },
+  }, '👁 Show');
+  openaiField.appendChild(openaiShowHide);
+  body.appendChild(openaiField);
+
   // Model picker
   const modelField = el('div', { class: 'pm-input-field', style: 'margin-top: 14px' });
   modelField.appendChild(el('label', { for: 'settings-model' }, 'Model'));
@@ -1506,6 +1537,7 @@ function openSettingsModal() {
       class: 'btn-primary',
       onclick: () => {
         setApiKey(keyInput.value.trim());
+        setOpenAIKey(openaiInput.value.trim());
         setModel(modelSel.value);
         setConcurrency(parseInt(concInput.value, 10) || 3);
         close();

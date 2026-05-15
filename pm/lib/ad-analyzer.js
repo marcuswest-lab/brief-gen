@@ -7,6 +7,7 @@
 // Retries: on 429, exponential backoff (max 3 attempts).
 
 const API_KEY_STORAGE = 'pbg.anthropicApiKey.v1';
+const OPENAI_KEY_STORAGE = 'pbg.openaiApiKey.v1';
 const MODEL_STORAGE = 'pbg.anthropicModel.v1';
 const CONCURRENCY_STORAGE = 'pbg.anthropicConcurrency.v1';
 
@@ -24,6 +25,15 @@ export function getApiKey() {
 export function setApiKey(key) {
   if (key) localStorage.setItem(API_KEY_STORAGE, key);
   else localStorage.removeItem(API_KEY_STORAGE);
+}
+
+export function getOpenAIKey() {
+  return localStorage.getItem(OPENAI_KEY_STORAGE) || '';
+}
+
+export function setOpenAIKey(key) {
+  if (key) localStorage.setItem(OPENAI_KEY_STORAGE, key);
+  else localStorage.removeItem(OPENAI_KEY_STORAGE);
 }
 
 export function getModel() {
@@ -96,6 +106,49 @@ function mediaTypeFor(filename) {
   if (lower.endsWith('.webp')) return 'image/webp';
   if (lower.endsWith('.gif')) return 'image/gif';
   return 'image/png';
+}
+
+// -------- Transcription (OpenAI Whisper) --------
+
+const WHISPER_MAX_BYTES = 25 * 1024 * 1024; // OpenAI's hard limit
+
+/**
+ * Transcribe a video (or audio) file via OpenAI Whisper. Whisper accepts
+ * video files directly and pulls out the audio track itself.
+ *
+ * @returns {Promise<string>} the transcript text, or '' on failure / no key
+ */
+export async function transcribeVideoFile(file, opts = {}) {
+  const apiKey = opts.openaiKey || getOpenAIKey();
+  if (!apiKey) return ''; // silently skip if no key configured
+  if (file.size > WHISPER_MAX_BYTES) {
+    return ''; // too big — skip
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+  form.append('model', 'whisper-1');
+  form.append('response_format', 'text');
+  // Force English for ad copy; remove if multilingual support is needed
+  form.append('language', 'en');
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn('Whisper transcription failed:', res.status, errText.slice(0, 200));
+      return '';
+    }
+    const text = await res.text();
+    return text.trim();
+  } catch (e) {
+    console.warn('Whisper transcription error:', e);
+    return '';
+  }
 }
 
 // -------- Video keyframe extraction --------
@@ -191,7 +244,7 @@ const SYSTEM_PROMPT = `You categorize ad creatives for the BAD Marketing Creativ
 
 const VIDEO_SYSTEM_PROMPT = `You categorize video ad creatives for the BAD Marketing Creative Tracker. You will be shown 5 keyframes sampled across the video's duration (start, 25%, 50%, 75%, end). Use them together to understand the ad's narrative arc. Return STRICT JSON, nothing else, no markdown fences.`;
 
-function buildVideoUserPrompt(filename, durationSec, filenameHints) {
+function buildVideoUserPrompt(filename, durationSec, filenameHints, transcript) {
   let hintsBlock = '';
   if (filenameHints && Object.keys(filenameHints).length > 0) {
     const lines = [];
@@ -200,8 +253,15 @@ function buildVideoUserPrompt(filename, durationSec, filenameHints) {
     if (filenameHints.cid) lines.push(`- CID (from filename, authoritative): "${filenameHints.cid}"`);
     if (lines.length > 0) hintsBlock = `\n\nFilename hints (use as starting point, override fields below):\n${lines.join('\n')}\n`;
   }
+
+  const transcriptBlock = transcript
+    ? `\n\n=== TRANSCRIPT (full audio of the video, authoritative for copy/script questions) ===\n${transcript}\n=== END TRANSCRIPT ===\n`
+    : `\n\n(No transcript available — rely on visible on-screen captions in the keyframes. Read every visible caption carefully.)\n`;
+
   const durStr = isFinite(durationSec) && durationSec > 0 ? ` (${Math.round(durationSec)}s long)` : '';
   return `You're shown 5 keyframes from a video ad${durStr}, sampled at 10%, 30%, 50%, 70%, and 90% of duration. Use the full sequence to understand the ad's hook, body, and CTA.
+
+The MOST important signal for Lead Type is the OPENING WORDS \u2014 the first sentence the speaker says. Lead Type is determined by what the hook line is doing rhetorically, not by the visuals.${transcriptBlock}
 
 Return this exact JSON structure (and nothing else):
 
@@ -212,12 +272,19 @@ Return this exact JSON structure (and nothing else):
   "ideaName": "<2-4 words describing the core ad concept>",
   "angleName": "<2-4 words describing the persuasion angle>",
   "styleName": "<2-4 words describing the video format, e.g. UGC Talking Head, Animated Explainer, Podcast Clip, Testimonial>",
-  "rationale": "<one sentence explaining the choices>"
+  "rationale": "<one sentence explaining your Lead Type choice. QUOTE THE OPENING LINE OF THE TRANSCRIPT (or first visible caption) verbatim.>"
 }
 
-Field guidance:
+Lead Type definitions \u2014 pick based on the opening line specifically:
+- "Offer": opens with a deal/discount/free thing ("Get the framework free...", "$500 off if you book today")
+- "Promise": opens with a desirable outcome ("I'll show you how to make $10K/mo", "You're about to learn the secret to...")
+- "Problem-Solution": opens by naming a pain point + a fix ("Tired of X? Here's how to Y")
+- "Secret": opens with a hidden truth or insider knowledge ("Almost nobody knows this about...", "Here's what they don't tell you")
+- "Proclamation": opens with a bold contrarian claim ("Going viral is a trap", "Most webinars are broken")
+- "Story": opens with personal narrative ("I delivered pizzas for 7 years before...", "Last year I lost $40K because...")
+
+Other field guidance:
 - "awarenessLevel": stage of customer awareness this ad targets
-- "leadType": copywriting lead style \u2014 what is the opening hook doing
 - "variationType": almost always "Lead" for new ads (the hook is the variation). "Pattern Interrupt" for unusual visual openers, "Body" if testing variations of body copy with same hook, "CTA" if testing endings
 - "ideaName": short noun phrase capturing the central idea
 - "angleName": short noun phrase capturing the persuasion angle
@@ -343,7 +410,11 @@ export async function analyzeVideoFile(file, filenameHints, opts) {
   if (!apiKey) throw new Error('No API key configured. Open Settings to add one.');
   const model = opts.model || getModel();
 
-  const { duration, frames } = await extractKeyframes(file);
+  // Transcribe + extract keyframes in parallel — both are independent
+  const [{ duration, frames }, transcript] = await Promise.all([
+    extractKeyframes(file),
+    transcribeVideoFile(file, { openaiKey: opts.openaiKey }),
+  ]);
 
   // Build the user content: each keyframe as an image block + a final text block
   const content = [];
@@ -355,7 +426,7 @@ export async function analyzeVideoFile(file, filenameHints, opts) {
   }
   content.push({
     type: 'text',
-    text: buildVideoUserPrompt(file.name, duration, filenameHints),
+    text: buildVideoUserPrompt(file.name, duration, filenameHints, transcript),
   });
 
   const body = {
@@ -389,7 +460,7 @@ export async function analyzeVideoFile(file, filenameHints, opts) {
     const json = await res.json();
     const text = json.content?.[0]?.text || '';
     const parsed = parseJsonResponse(text);
-    return { ...parsed, durationSec: duration, keyframes: frames };
+    return { ...parsed, durationSec: duration, keyframes: frames, transcript };
   }
   throw new Error('Rate-limited after retries');
 }
@@ -424,6 +495,7 @@ function parseJsonResponse(text) {
 export async function analyzeBatch(jobs, onProgress, opts = {}) {
   const concurrency = opts.concurrency || getConcurrency();
   const apiKey = opts.apiKey || getApiKey();
+  const openaiKey = opts.openaiKey || getOpenAIKey();
   const model = opts.model || getModel();
   const results = new Array(jobs.length);
 
@@ -436,7 +508,7 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
       onProgress?.(i, 'analyzing');
       try {
         const fn = isVideoFile(job.file) ? analyzeVideoFile : analyzeAdImage;
-        const result = await fn(job.file, job.filenameHints, { apiKey, model });
+        const result = await fn(job.file, job.filenameHints, { apiKey, openaiKey, model });
         results[i] = { ok: true, result };
         onProgress?.(i, 'done', result);
       } catch (e) {
