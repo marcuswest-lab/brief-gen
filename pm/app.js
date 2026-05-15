@@ -9,7 +9,7 @@ import { generateBrief } from '../lib/docx-filler.js';
 import { parseAdFilename, groupAdFiles, pickRepresentativeFile } from './lib/filename-parser.js';
 import {
   getApiKey, setApiKey, getModel, setModel, getConcurrency, setConcurrency,
-  testApiKey, analyzeBatch, estimateCost,
+  testApiKey, analyzeBatch, estimateCost, isVideoFile,
   DEFAULT_MODEL, SONNET_MODEL, OPUS_MODEL,
 } from './lib/ad-analyzer.js';
 
@@ -36,6 +36,7 @@ const state = {
   trackerToBriefFilterClientId: '', // separate filter for the regen tab
 
   // Ad Categorizer
+  adCatMode: 'static',      // 'static' | 'video' — sub-tab inside Ad Categorizer
   adCatGroups: [],          // [{ key, files, parsed, ratios, status, result, error }]
   adCatRunning: false,
   adCatResult: null,        // { tracker, trackerLabel, block1, block2, notes, variationCount }
@@ -58,6 +59,7 @@ function saveState() {
       filledStates: state.filledStates,
       trackerToBriefBriefId: state.trackerToBriefBriefId,
       trackerToBriefFilterClientId: state.trackerToBriefFilterClientId,
+      adCatMode: state.adCatMode,
     }));
   } catch (e) {
     console.warn('Save failed:', e);
@@ -940,7 +942,9 @@ function renderAdCategorizer() {
     el('div', {},
       el('h2', { style: 'margin: 0' }, '🤖 Ad Categorizer'),
       el('div', { class: 'pm-help', style: 'margin-top: 4px' },
-        'Drop ad images, .zip, or pick files. Click Categorize to send each unique creative to Claude. Output is paste-ready tracker rows.'
+        state.adCatMode === 'video'
+          ? 'Drop video files (.mp4, .mov, .webm) or .zip. Each video has 5 keyframes extracted and sent to Claude for categorization. Output goes into the Video Creative Tracker.'
+          : 'Drop ad images, .zip, or pick files. Each image is sent to Claude vision. Output goes into the Static Creative Tracker.'
       ),
     ),
     el('button', {
@@ -950,6 +954,28 @@ function renderAdCategorizer() {
     }, '⚙️ Settings'),
   );
   headerCard.appendChild(headerRow);
+
+  // Static / Video sub-tab toggle
+  const subTabs = el('div', { class: 'pm-source-toggle', style: 'margin-top: 14px' });
+  for (const mode of ['static', 'video']) {
+    subTabs.appendChild(el('button', {
+      type: 'button',
+      class: 'pm-source-tab' + (state.adCatMode === mode ? ' active' : ''),
+      onclick: () => {
+        if (state.adCatMode === mode) return;
+        if (state.adCatGroups.length > 0 || state.adCatResult) {
+          if (!confirm('Switching mode will clear the current files and results. Continue?')) return;
+        }
+        state.adCatMode = mode;
+        state.adCatGroups = [];
+        state.adCatResult = null;
+        saveState();
+        renderAdCategorizer();
+      },
+    }, mode === 'video' ? '🎬 Videos' : '🖼 Statics'));
+  }
+  headerCard.appendChild(subTabs);
+
   wrap.appendChild(headerCard);
 
   // Drop zone + file picker
@@ -966,14 +992,19 @@ function renderAdCategorizer() {
     },
   });
   dropZone.appendChild(el('div', { class: 'ad-cat-dropzone-text' },
-    'Drag a folder, .zip, or images here'
+    state.adCatMode === 'video'
+      ? 'Drag a folder, .zip, or video files here'
+      : 'Drag a folder, .zip, or images here'
   ));
 
+  const pickerAccept = state.adCatMode === 'video'
+    ? '.mp4,.mov,.webm,.m4v,.zip'
+    : '.png,.jpg,.jpeg,.webp,.gif,.zip';
   const pickerInput = el('input', {
     type: 'file',
     id: 'ad-cat-picker',
     multiple: true,
-    accept: '.png,.jpg,.jpeg,.webp,.gif,.zip',
+    accept: pickerAccept,
     style: 'display: none',
     onchange: (e) => handleAdCatFiles(Array.from(e.target.files)),
   });
@@ -1032,12 +1063,28 @@ function renderAdCatPreview() {
   state.adCatGroups.forEach((g, idx) => {
     const tile = el('div', { class: 'ad-cat-tile ad-cat-tile-' + (g.status || 'pending') });
 
-    // Thumbnail (use first file from group as representative)
+    // Thumbnail (use first file from group as representative).
+    // For video files, render a <video> element (poster = first frame, no controls).
     const repFile = pickRepresentativeFile(g);
-    const img = el('img', { class: 'ad-cat-thumb' });
-    img.src = URL.createObjectURL(repFile);
-    img.onload = () => URL.revokeObjectURL(img.src);
-    tile.appendChild(img);
+    if (isVideoFile(repFile)) {
+      const vid = el('video', {
+        class: 'ad-cat-thumb',
+        muted: true,
+        playsinline: true,
+        preload: 'metadata',
+      });
+      vid.src = URL.createObjectURL(repFile);
+      vid.onloadedmetadata = () => {
+        // Seek to first frame for the poster
+        vid.currentTime = 0.1;
+      };
+      tile.appendChild(vid);
+    } else {
+      const img = el('img', { class: 'ad-cat-thumb' });
+      img.src = URL.createObjectURL(repFile);
+      img.onload = () => URL.revokeObjectURL(img.src);
+      tile.appendChild(img);
+    }
 
     const meta = el('div', { class: 'ad-cat-meta' });
     meta.appendChild(el('div', { class: 'ad-cat-filename', title: g.parsed.baseName }, truncate(g.parsed.baseName, 40)));
@@ -1064,12 +1111,17 @@ function renderAdCatPreview() {
 
 function renderAdCatActions() {
   const card = el('div', { class: 'card' });
-  const numImages = state.adCatGroups.length;
-  const cost = estimateCost(numImages);
+  const numItems = state.adCatGroups.length;
+  const isVideo = state.adCatMode === 'video';
+  const cost = estimateCost(numItems, undefined, isVideo ? 'video' : 'static');
   const costStr = `≈$${cost.toFixed(2)}`;
 
+  const detail = isVideo
+    ? `Each video has 5 keyframes extracted in your browser, then sent together to Claude.`
+    : `Each ad gets a separate API call to Claude vision.`;
+
   const info = el('p', { class: 'pm-help' },
-    `Will analyze ${numImages} unique creative${numImages === 1 ? '' : 's'} (${costStr}). Each ad gets a separate API call to Claude vision.`
+    `Will analyze ${numItems} unique ${isVideo ? 'video' : 'creative'}${numItems === 1 ? '' : 's'} (${costStr}). ${detail}`
   );
   card.appendChild(info);
 
@@ -1079,7 +1131,7 @@ function renderAdCatActions() {
       class: 'btn-primary',
       disabled: state.adCatRunning ? '' : null,
       onclick: handleAdCatCategorize,
-    }, state.adCatRunning ? 'Categorizing…' : `Categorize ${numImages} ad${numImages === 1 ? '' : 's'}`),
+    }, state.adCatRunning ? 'Categorizing…' : `Categorize ${numItems} ${isVideo ? 'video' : 'ad'}${numItems === 1 ? '' : 's'}`),
   );
   card.appendChild(actions);
   return card;
@@ -1124,25 +1176,28 @@ async function collectEntryFiles(entry, out) {
 }
 
 async function handleAdCatFiles(rawFiles) {
-  // Filter to images + zips, expand zips
+  const isVideoMode = state.adCatMode === 'video';
+  const acceptedRe = isVideoMode
+    ? /\.(mp4|mov|webm|m4v)$/i
+    : /\.(png|jpe?g|webp|gif)$/i;
+
+  // Filter to accepted media + zips, expand zips
   const filtered = [];
   for (const f of rawFiles) {
     if (!f) continue;
     const lower = (f.name || '').toLowerCase();
-    if (/\.(png|jpe?g|webp|gif)$/i.test(lower)) {
+    if (acceptedRe.test(lower)) {
       filtered.push(f);
     } else if (lower.endsWith('.zip') && typeof JSZip !== 'undefined') {
       try {
         const zip = await JSZip.loadAsync(f);
         for (const [name, entry] of Object.entries(zip.files)) {
           if (entry.dir) continue;
-          if (!/\.(png|jpe?g|webp|gif)$/i.test(name)) continue;
-          // Skip macOS metadata
+          if (!acceptedRe.test(name)) continue;
           if (name.includes('__MACOSX/') || name.endsWith('.DS_Store')) continue;
           const blob = await entry.async('blob');
-          // Use the basename only for grouping
           const base = name.split('/').pop();
-          const file = new File([blob], base, { type: blob.type || 'image/png' });
+          const file = new File([blob], base, { type: blob.type || (isVideoMode ? 'video/mp4' : 'image/png') });
           filtered.push(file);
         }
       } catch (e) {
@@ -1152,7 +1207,12 @@ async function handleAdCatFiles(rawFiles) {
   }
 
   if (filtered.length === 0) {
-    flashStatus('No image files found in the drop. Accepted: .png, .jpg, .webp, .gif, .zip', 'error');
+    flashStatus(
+      isVideoMode
+        ? 'No video files found. Accepted: .mp4, .mov, .webm, .m4v, .zip'
+        : 'No image files found. Accepted: .png, .jpg, .webp, .gif, .zip',
+      'error'
+    );
     return;
   }
 
@@ -1206,28 +1266,33 @@ async function handleAdCatCategorize() {
   }
 
   const effectiveClient = getEffectiveClient();
+  const isVideo = state.adCatMode === 'video';
+
   const variations = successful.map(g => {
     const r = g.result;
-    // Filename data is authoritative where present
     const leadType = g.parsed.leadType || r.leadType || '';
     const ideaName = g.parsed.ideaName || r.ideaName || '';
-    return {
-      'File Name': '',  // tracker auto-generates; left blank
-      'Variation Type': r.variationType || 'Copy',
+    const styleField = isVideo ? (r.styleName || '') : (r.imageStyle || '');
+    const v = {
+      'File Name': '',
+      'Variation Type': r.variationType || (isVideo ? 'Lead' : 'Copy'),
       'Awareness Level': r.awarenessLevel || '',
       'Lead Type': leadType,
-      'Status': '',     // post-launch
-      // Per-variation overrides for Block 2 columns
+      'Status': '',
       'Idea Name': ideaName,
       'Angle Name': r.angleName || '',
-      'Style Name': r.imageStyle || '',
-      'Image Style': r.imageStyle || '',
+      'Style Name': styleField,
+      'Image Style': styleField,
     };
+    if (isVideo && isFinite(r.durationSec) && r.durationSec > 0) {
+      v['Length (in Sec)'] = String(Math.round(r.durationSec));
+    }
+    return v;
   });
 
   const fakeBrief = {
-    briefType: 'static',
-    overview: { 'Net New/Iteration': 'Net New' },  // default for client-supplied ads
+    briefType: isVideo ? 'video' : 'static',
+    overview: { 'Net New/Iteration': 'Net New' },
     variations,
   };
   try {

@@ -191,6 +191,43 @@ const SYSTEM_PROMPT = `You categorize ad creatives for the BAD Marketing Creativ
 
 const VIDEO_SYSTEM_PROMPT = `You categorize video ad creatives for the BAD Marketing Creative Tracker. You will be shown 5 keyframes sampled across the video's duration (start, 25%, 50%, 75%, end). Use them together to understand the ad's narrative arc. Return STRICT JSON, nothing else, no markdown fences.`;
 
+function buildVideoUserPrompt(filename, durationSec, filenameHints) {
+  let hintsBlock = '';
+  if (filenameHints && Object.keys(filenameHints).length > 0) {
+    const lines = [];
+    if (filenameHints.ideaName) lines.push(`- Likely Idea Name (from filename): "${filenameHints.ideaName}"`);
+    if (filenameHints.leadType) lines.push(`- Lead Type (from filename, authoritative): "${filenameHints.leadType}"`);
+    if (filenameHints.cid) lines.push(`- CID (from filename, authoritative): "${filenameHints.cid}"`);
+    if (lines.length > 0) hintsBlock = `\n\nFilename hints (use as starting point, override fields below):\n${lines.join('\n')}\n`;
+  }
+  const durStr = isFinite(durationSec) && durationSec > 0 ? ` (${Math.round(durationSec)}s long)` : '';
+  return `You're shown 5 keyframes from a video ad${durStr}, sampled at 10%, 30%, 50%, 70%, and 90% of duration. Use the full sequence to understand the ad's hook, body, and CTA.
+
+Return this exact JSON structure (and nothing else):
+
+{
+  "awarenessLevel": "<one of: Most Aware | Solution Aware | Problem Aware | Unaware>",
+  "leadType": "<one of: Offer | Promise | Problem-Solution | Secret | Proclamation | Story>",
+  "variationType": "<one of: Lead | Pattern Interrupt | Body | CTA>",
+  "ideaName": "<2-4 words describing the core ad concept>",
+  "angleName": "<2-4 words describing the persuasion angle>",
+  "styleName": "<2-4 words describing the video format, e.g. UGC Talking Head, Animated Explainer, Podcast Clip, Testimonial>",
+  "rationale": "<one sentence explaining the choices>"
+}
+
+Field guidance:
+- "awarenessLevel": stage of customer awareness this ad targets
+- "leadType": copywriting lead style \u2014 what is the opening hook doing
+- "variationType": almost always "Lead" for new ads (the hook is the variation). "Pattern Interrupt" for unusual visual openers, "Body" if testing variations of body copy with same hook, "CTA" if testing endings
+- "ideaName": short noun phrase capturing the central idea
+- "angleName": short noun phrase capturing the persuasion angle
+- "styleName": describe the video format / style
+
+Filename: ${filename}${hintsBlock}
+
+Return ONLY the JSON object. No preamble, no explanation, no markdown.`;
+}
+
 function buildUserPrompt(filename, filenameHints) {
   let hintsBlock = '';
   if (filenameHints && Object.keys(filenameHints).length > 0) {
@@ -294,6 +331,69 @@ export async function analyzeAdImage(file, filenameHints, opts) {
   throw new Error('Rate-limited after retries');
 }
 
+/**
+ * Extract keyframes from a video file and send them as a multi-image
+ * request to Claude. Returns { ...categorization, durationSec, keyframes }.
+ *
+ * `keyframes` is the same array returned by extractKeyframes() so the UI
+ * can show what Claude saw.
+ */
+export async function analyzeVideoFile(file, filenameHints, opts) {
+  const apiKey = opts.apiKey || getApiKey();
+  if (!apiKey) throw new Error('No API key configured. Open Settings to add one.');
+  const model = opts.model || getModel();
+
+  const { duration, frames } = await extractKeyframes(file);
+
+  // Build the user content: each keyframe as an image block + a final text block
+  const content = [];
+  for (const frame of frames) {
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: frame.mediaType, data: frame.base64 },
+    });
+  }
+  content.push({
+    type: 'text',
+    text: buildVideoUserPrompt(file.name, duration, filenameHints),
+  });
+
+  const body = {
+    model,
+    max_tokens: 500,
+    system: VIDEO_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content }],
+  };
+
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify(body),
+      signal: opts.signal,
+    });
+    if (res.status === 429 && attempt < maxAttempts) {
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      continue;
+    }
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`API error ${res.status}: ${errBody.slice(0, 300)}`);
+    }
+    const json = await res.json();
+    const text = json.content?.[0]?.text || '';
+    const parsed = parseJsonResponse(text);
+    return { ...parsed, durationSec: duration, keyframes: frames };
+  }
+  throw new Error('Rate-limited after retries');
+}
+
 function parseJsonResponse(text) {
   // Claude may occasionally wrap in markdown fences; strip them
   const cleaned = text.trim()
@@ -335,7 +435,8 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
       const job = jobs[i];
       onProgress?.(i, 'analyzing');
       try {
-        const result = await analyzeAdImage(job.file, job.filenameHints, { apiKey, model });
+        const fn = isVideoFile(job.file) ? analyzeVideoFile : analyzeAdImage;
+        const result = await fn(job.file, job.filenameHints, { apiKey, model });
         results[i] = { ok: true, result };
         onProgress?.(i, 'done', result);
       } catch (e) {
@@ -351,18 +452,21 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
 // -------- Cost estimate --------
 
 /** Rough cost estimate in USD for a batch. */
-export function estimateCost(numImages, model) {
-  // Per image: ~1500 input tokens (image + prompt) + ~200 output tokens
+export function estimateCost(numItems, model, mediaKind = 'static') {
+  // Per static: ~1500 input tokens (image + prompt) + ~200 output tokens
+  // Per video: ~5500 input tokens (5 keyframes + prompt) + ~250 output tokens
   const m = model || getModel();
   let inputCostPerMTok, outputCostPerMTok;
   if (m.includes('haiku')) {
-    inputCostPerMTok = 1.0;   outputCostPerMTok = 5.0;     // Haiku 4.5
+    inputCostPerMTok = 1.0;   outputCostPerMTok = 5.0;
   } else if (m.includes('opus')) {
-    inputCostPerMTok = 15.0;  outputCostPerMTok = 75.0;    // Opus 4.6
+    inputCostPerMTok = 15.0;  outputCostPerMTok = 75.0;
   } else {
-    inputCostPerMTok = 3.0;   outputCostPerMTok = 15.0;    // Sonnet 4.6
+    inputCostPerMTok = 3.0;   outputCostPerMTok = 15.0;
   }
-  const totalInputTok = numImages * 1500;
-  const totalOutputTok = numImages * 200;
+  const inputPerItem = mediaKind === 'video' ? 5500 : 1500;
+  const outputPerItem = mediaKind === 'video' ? 250 : 200;
+  const totalInputTok = numItems * inputPerItem;
+  const totalOutputTok = numItems * outputPerItem;
   return (totalInputTok / 1_000_000) * inputCostPerMTok + (totalOutputTok / 1_000_000) * outputCostPerMTok;
 }

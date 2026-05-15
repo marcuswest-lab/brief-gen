@@ -75,7 +75,7 @@ export const TRACKERS = {
         { col: 'V',  label: 'Angle Name',     source: 'overview:Angle Name' },
         { col: 'W',  label: 'Style Name',     source: 'overview:Style Name' },
         { col: 'X',  label: 'Talent',         source: 'blank' },
-        { col: 'Y',  label: 'Length (in Sec)', source: 'blank' },
+        { col: 'Y',  label: 'Length (in Sec)', source: 'variation:Length (in Sec)' },
         { col: 'Z',  label: 'Copywriter',     source: 'overview:Copywriter' },
         { col: 'AA', label: 'Designer',       source: 'blank' },
         { col: 'AB', label: 'Variation Name', source: 'computed:variationName' },
