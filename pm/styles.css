@@ -168,6 +168,12 @@ video.ad-cat-thumb::-webkit-media-controls-overlay-play-button {
   color: #5a3a00;
 }
 
+.ad-cat-tag-match {
+  background: #c2e0c2;
+  color: #1f7a1f;
+  font-weight: 700;
+}
+
 .ad-cat-status {
   font-size: 11px;
   color: var(--muted);

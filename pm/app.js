@@ -7,6 +7,7 @@ import { loadBriefs, getBrief, upsertBrief, sortBriefsRecent, briefDisplayLabel,
 import { TEMPLATES } from '../lib/templates-config.js';
 import { generateBrief } from '../lib/docx-filler.js';
 import { parseAdFilename, groupAdFiles, pickRepresentativeFile } from './lib/filename-parser.js';
+import { parseClaudeOutput } from '../lib/claude-output-parser.js';
 import {
   getApiKey, setApiKey, getOpenAIKey, setOpenAIKey,
   getModel, setModel, getConcurrency, setConcurrency,
@@ -41,6 +42,10 @@ const state = {
   adCatGroups: [],          // [{ key, files, parsed, ratios, status, result, error }]
   adCatRunning: false,
   adCatResult: null,        // { tracker, trackerLabel, block1, block2, notes, variationCount }
+  // Brief context for video matching
+  adCatBriefMode: 'none',   // 'none' | 'saved' | 'paste'
+  adCatBriefId: null,       // when adCatBriefMode === 'saved'
+  adCatBriefText: '',       // when adCatBriefMode === 'paste'
 };
 
 // -------- Persistence --------
@@ -61,6 +66,9 @@ function saveState() {
       trackerToBriefBriefId: state.trackerToBriefBriefId,
       trackerToBriefFilterClientId: state.trackerToBriefFilterClientId,
       adCatMode: state.adCatMode,
+      adCatBriefMode: state.adCatBriefMode,
+      adCatBriefId: state.adCatBriefId,
+      adCatBriefText: state.adCatBriefText,
     }));
   } catch (e) {
     console.warn('Save failed:', e);
@@ -994,6 +1002,11 @@ function renderAdCategorizer() {
 
   wrap.appendChild(headerCard);
 
+  // Brief context card (only meaningful for video mode where transcript matching works)
+  if (state.adCatMode === 'video') {
+    wrap.appendChild(renderAdCatBriefContextCard());
+  }
+
   // Drop zone + file picker
   const inputCard = el('div', { class: 'card' });
   const dropZone = el('div', {
@@ -1055,6 +1068,144 @@ function renderAdCategorizer() {
   if (state.adCatResult) {
     wrap.appendChild(renderResultPanel(state.adCatResult));
   }
+}
+
+function renderAdCatBriefContextCard() {
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h3', { style: 'margin: 0 0 4px' }, 'Does a brief exist for these videos?'));
+  card.appendChild(el('p', { class: 'pm-help', style: 'margin: 0 0 12px' },
+    'If the videos are recordings of scripts you already wrote in a brief, the AI can match each video to its source brief variation and inherit Awareness Level, Lead Type, Idea Name, etc. from the brief instead of guessing.'
+  ));
+
+  // Mode toggle
+  const toggle = el('div', { class: 'pm-source-toggle', style: 'margin-bottom: 12px' });
+  const setMode = (mode) => {
+    state.adCatBriefMode = mode;
+    saveState();
+    renderAdCategorizer();
+  };
+  for (const m of [['none', 'No brief'], ['saved', 'Pick saved brief'], ['paste', 'Paste brief text']]) {
+    toggle.appendChild(el('button', {
+      type: 'button',
+      class: 'pm-source-tab' + (state.adCatBriefMode === m[0] ? ' active' : ''),
+      onclick: () => setMode(m[0]),
+    }, m[1]));
+  }
+  card.appendChild(toggle);
+
+  if (state.adCatBriefMode === 'saved') {
+    // Show video saved-briefs filtered to current client (or all if no client)
+    const allBriefs = sortBriefsRecent(loadBriefs()).filter(b => b.briefType === 'video');
+    const client = getEffectiveClient();
+    const briefs = client ? allBriefs.filter(b => b.clientId === client.id) : allBriefs;
+
+    if (briefs.length === 0) {
+      card.appendChild(el('div', { class: 'pm-detect pm-detect-empty' },
+        client
+          ? `No saved video briefs for ${client.name}. Switch client or paste text instead.`
+          : 'No saved video briefs. Generate one in Briefgen first, or paste brief text.'
+      ));
+    } else {
+      const sel = el('select', {
+        class: 'pm-saved-select',
+        onchange: (e) => {
+          state.adCatBriefId = e.target.value || null;
+          saveState();
+        },
+      });
+      sel.appendChild(el('option', { value: '' }, '— pick a brief —'));
+      for (const b of briefs) {
+        const opt = el('option', { value: b.id }, briefDisplayLabel(b) + ` — ${b.creatives.length} variation${b.creatives.length === 1 ? '' : 's'}`);
+        if (b.id === state.adCatBriefId) opt.setAttribute('selected', '');
+        sel.appendChild(opt);
+      }
+      card.appendChild(sel);
+
+      // Show preview of variations
+      if (state.adCatBriefId) {
+        const brief = briefs.find(b => b.id === state.adCatBriefId);
+        if (brief) {
+          const summary = el('div', { class: 'pm-detect', style: 'margin-top: 8px' },
+            `Will match against ${brief.creatives.length} variation${brief.creatives.length === 1 ? '' : 's'} from this brief.`
+          );
+          card.appendChild(summary);
+        }
+      }
+    }
+  } else if (state.adCatBriefMode === 'paste') {
+    const ta = el('textarea', {
+      placeholder: 'Paste the full brief text here (same format as Briefgen Quick Fill).',
+      rows: 8,
+      style: 'width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 6px;',
+      oninput: (e) => {
+        state.adCatBriefText = e.target.value;
+        saveState();
+        // Live preview of how many variations parsed
+        const previewEl = card.querySelector('.pm-paste-preview');
+        if (previewEl) previewEl.textContent = previewParsedBriefText(state.adCatBriefText);
+      },
+    });
+    ta.value = state.adCatBriefText;
+    card.appendChild(ta);
+    card.appendChild(el('div', { class: 'pm-detect pm-paste-preview', style: 'margin-top: 8px' },
+      previewParsedBriefText(state.adCatBriefText)
+    ));
+  }
+
+  return card;
+}
+
+function previewParsedBriefText(text) {
+  if (!text || !text.trim()) return 'Paste brief text to see how many variations are detected.';
+  try {
+    const parsed = parseClaudeOutput(text);
+    return `Parsed ${parsed.creatives.length} variation${parsed.creatives.length === 1 ? '' : 's'} from the pasted brief.`;
+  } catch (e) {
+    return 'Parse error: ' + e.message;
+  }
+}
+
+/**
+ * Returns the candidate brief variations to send to Claude for matching, or
+ * null if no brief is configured. Each candidate has briefId, briefDisplayLabel,
+ * variationIndex, leadScript, bodyScript + the full overview/variation data
+ * we'll merge into the result.
+ */
+function getAdCatBriefCandidates() {
+  if (state.adCatMode !== 'video' || state.adCatBriefMode === 'none') return null;
+
+  let briefSource = null;
+  if (state.adCatBriefMode === 'saved' && state.adCatBriefId) {
+    const stored = getBrief(state.adCatBriefId);
+    if (!stored || stored.briefType !== 'video') return null;
+    briefSource = {
+      label: briefDisplayLabel(stored),
+      overview: stored.overview,
+      variations: stored.creatives,
+    };
+  } else if (state.adCatBriefMode === 'paste' && state.adCatBriefText.trim()) {
+    try {
+      const parsed = parseClaudeOutput(state.adCatBriefText);
+      briefSource = {
+        label: '(pasted brief)',
+        overview: parsed.overview,
+        variations: parsed.creatives,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+  if (!briefSource || briefSource.variations.length === 0) return null;
+
+  return briefSource.variations.map((v, i) => ({
+    briefDisplayLabel: briefSource.label,
+    variationIndex: i,
+    leadScript: v['Lead Script'] || '',
+    bodyScript: v['Body Script'] || '',
+    // Embedded full data to inherit when matched
+    _overview: briefSource.overview,
+    _variation: v,
+  }));
 }
 
 function renderAdCatPreview() {
@@ -1179,6 +1330,12 @@ function renderAdCatPreview() {
     if (g.parsed.cid) tags.appendChild(el('span', { class: 'ad-cat-tag ad-cat-tag-cid' }, g.parsed.cid));
     if (g.ratios.length > 0) tags.appendChild(el('span', { class: 'ad-cat-tag' }, g.ratios.join(' + ')));
     if (g.parsed.leadType) tags.appendChild(el('span', { class: 'ad-cat-tag ad-cat-tag-lead' }, g.parsed.leadType));
+    if (g.briefMatch) {
+      tags.appendChild(el('span', {
+        class: 'ad-cat-tag ad-cat-tag-match',
+        title: `Matched to ${g.briefMatch.briefDisplayLabel} variation ${g.briefMatch.variationIndex + 1}`,
+      }, `✅ Brief #${g.briefMatch.variationIndex + 1}`));
+    }
     meta.appendChild(tags);
 
     // Status indicator
@@ -1339,6 +1496,10 @@ async function handleAdCatCategorize() {
     },
   }));
 
+  // Brief-match candidates (video mode only). Indexed list — Claude returns
+  // the matching candidate's index per video, and we look it up here.
+  const briefCandidates = getAdCatBriefCandidates();
+
   await analyzeBatch(jobs, (idx, status, payload) => {
     state.adCatGroups[idx].status = status;
     if (status === 'done') state.adCatGroups[idx].result = payload;
@@ -1346,7 +1507,7 @@ async function handleAdCatCategorize() {
     // Re-render preview only (keep cost actions)
     const oldPreview = document.querySelector('.ad-cat-grid')?.parentElement;
     if (oldPreview) oldPreview.replaceWith(renderAdCatPreview());
-  });
+  }, { briefCandidates });
 
   state.adCatRunning = false;
 
@@ -1363,6 +1524,8 @@ async function handleAdCatCategorize() {
 
   const variations = successful.map(g => {
     const r = g.result;
+
+    // Step 1: AI + filename baseline
     const leadType = g.parsed.leadType || r.leadType || '';
     const ideaName = g.parsed.ideaName || r.ideaName || '';
     const styleField = isVideo ? (r.styleName || '') : (r.imageStyle || '');
@@ -1379,6 +1542,36 @@ async function handleAdCatCategorize() {
     };
     if (isVideo && isFinite(r.durationSec) && r.durationSec > 0) {
       v['Length (in Sec)'] = String(Math.round(r.durationSec));
+    }
+
+    // Step 2: if Claude matched this video to a brief variation, override
+    // every brief-set field with the brief's value.
+    if (isVideo && briefCandidates && Number.isInteger(r.matchedCandidateIndex)) {
+      const cand = briefCandidates[r.matchedCandidateIndex];
+      if (cand) {
+        const overview = cand._overview || {};
+        const variation = cand._variation || {};
+        // Brief is source of truth — only overwrite if brief actually has the value
+        const inheritFromBrief = (key) => {
+          if (variation[key] != null && String(variation[key]).trim() !== '') v[key] = variation[key];
+          else if (overview[key] != null && String(overview[key]).trim() !== '') v[key] = overview[key];
+        };
+        inheritFromBrief('Variation Type');
+        inheritFromBrief('Awareness Level');
+        inheritFromBrief('Lead Type');
+        inheritFromBrief('Status');
+        inheritFromBrief('Idea Name');
+        inheritFromBrief('Angle Name');
+        inheritFromBrief('Style Name');
+        // Style Name in overview maps to Image Style for static; kept in sync
+        if (variation['Style Name']) v['Image Style'] = variation['Style Name'];
+        else if (overview['Style Name']) v['Image Style'] = overview['Style Name'];
+        // Tag the group with the match info for the tile badge
+        g.briefMatch = {
+          briefDisplayLabel: cand.briefDisplayLabel,
+          variationIndex: cand.variationIndex,
+        };
+      }
     }
     return v;
   });
@@ -1399,6 +1592,16 @@ async function handleAdCatCategorize() {
     const notes = [...(result.notes || [])];
     if (effectiveClient && CLIENTS_THAT_SUPPLY_NAMES.has(effectiveClient.id)) {
       notes.push(`${effectiveClient.name} typically supplies Idea Name, Angle Name, and Image Style themselves — review and clear those columns before pasting if you don't want to overwrite the client's data.`);
+    }
+    // Brief-match summary
+    if (briefCandidates) {
+      const matched = successful.filter(g => g.briefMatch).length;
+      const total = successful.length;
+      if (matched > 0) {
+        notes.push(`✅ Brief matching: ${matched} of ${total} video${total === 1 ? '' : 's'} matched to a brief variation. Matched videos inherit Awareness Level, Lead Type, Idea Name, Angle Name, and Style Name from the brief (overriding AI guesses).`);
+      } else {
+        notes.push(`⚠️ Brief matching: 0 of ${total} videos matched any brief variation confidently. AI-inferred fields used as-is. Check that the brief you provided matches these videos.`);
+      }
     }
     result.notes = notes;
     // Attach the row-by-row filename mapping so the result panel can show it

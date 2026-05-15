@@ -244,7 +244,7 @@ const SYSTEM_PROMPT = `You categorize ad creatives for the BAD Marketing Creativ
 
 const VIDEO_SYSTEM_PROMPT = `You categorize video ad creatives for the BAD Marketing Creative Tracker. You will be shown 5 keyframes sampled across the video's duration (start, 25%, 50%, 75%, end). Use them together to understand the ad's narrative arc. Return STRICT JSON, nothing else, no markdown fences.`;
 
-function buildVideoUserPrompt(filename, durationSec, filenameHints, transcript) {
+function buildVideoUserPrompt(filename, durationSec, filenameHints, transcript, briefCandidates) {
   let hintsBlock = '';
   if (filenameHints && Object.keys(filenameHints).length > 0) {
     const lines = [];
@@ -257,6 +257,18 @@ function buildVideoUserPrompt(filename, durationSec, filenameHints, transcript) 
   const transcriptBlock = transcript
     ? `\n\n=== TRANSCRIPT (full audio of the video, authoritative for copy/script questions) ===\n${transcript}\n=== END TRANSCRIPT ===\n`
     : `\n\n(No transcript available — rely on visible on-screen captions in the keyframes. Read every visible caption carefully.)\n`;
+
+  let briefMatchBlock = '';
+  let briefMatchInstructions = '';
+  if (briefCandidates && briefCandidates.length > 0) {
+    const candidatesText = briefCandidates.map((c, i) =>
+      `[${i}] Brief: ${c.briefDisplayLabel} | Variation ${c.variationIndex + 1}\n  Lead Script: ${(c.leadScript || '(blank)').slice(0, 400)}\n  Body Script: ${(c.bodyScript || '(blank)').slice(0, 400)}`
+    ).join('\n\n');
+    briefMatchBlock = `\n\n=== CANDIDATE BRIEF VARIATIONS (already-written ad scripts) ===\n${candidatesText}\n=== END CANDIDATES ===\n`;
+    briefMatchInstructions = `
+
+If the transcript above clearly matches one of the candidate brief variations (i.e., it's a recording of one of those scripts), set "matchedCandidateIndex" to that candidate's index number (e.g., 0, 1, 2...). If NO candidate matches confidently, set "matchedCandidateIndex" to null. Be strict — only match when the transcript is clearly a recording of that specific script (paraphrasing is OK, but topic similarity alone is not enough).`;
+  }
 
   const durStr = isFinite(durationSec) && durationSec > 0 ? ` (${Math.round(durationSec)}s long)` : '';
   return `You're shown 5 keyframes from a video ad${durStr}, sampled at 10%, 30%, 50%, 70%, and 90% of duration. Use the full sequence to understand the ad's hook, body, and CTA.
@@ -272,7 +284,8 @@ Return this exact JSON structure (and nothing else):
   "ideaName": "<2-4 words describing the core ad concept>",
   "angleName": "<2-4 words describing the persuasion angle>",
   "styleName": "<2-4 words describing the video format, e.g. UGC Talking Head, Animated Explainer, Podcast Clip, Testimonial>",
-  "rationale": "<one sentence explaining your Lead Type choice. QUOTE THE OPENING LINE OF THE TRANSCRIPT (or first visible caption) verbatim.>"
+  "rationale": "<one sentence explaining your Lead Type choice. QUOTE THE OPENING LINE OF THE TRANSCRIPT (or first visible caption) verbatim.>",
+  "matchedCandidateIndex": <integer index of matching candidate brief variation, or null if no match. Always include this field.>
 }
 
 Lead Type definitions \u2014 pick based on the opening line specifically:
@@ -290,7 +303,7 @@ Other field guidance:
 - "angleName": short noun phrase capturing the persuasion angle
 - "styleName": describe the video format / style
 
-Filename: ${filename}${hintsBlock}
+Filename: ${filename}${hintsBlock}${briefMatchBlock}${briefMatchInstructions}
 
 Return ONLY the JSON object. No preamble, no explanation, no markdown.`;
 }
@@ -426,7 +439,7 @@ export async function analyzeVideoFile(file, filenameHints, opts) {
   }
   content.push({
     type: 'text',
-    text: buildVideoUserPrompt(file.name, duration, filenameHints, transcript),
+    text: buildVideoUserPrompt(file.name, duration, filenameHints, transcript, opts.briefCandidates),
   });
 
   const body = {
@@ -497,6 +510,7 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
   const apiKey = opts.apiKey || getApiKey();
   const openaiKey = opts.openaiKey || getOpenAIKey();
   const model = opts.model || getModel();
+  const briefCandidates = opts.briefCandidates || null;
   const results = new Array(jobs.length);
 
   let nextIndex = 0;
@@ -508,7 +522,11 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
       onProgress?.(i, 'analyzing');
       try {
         const fn = isVideoFile(job.file) ? analyzeVideoFile : analyzeAdImage;
-        const result = await fn(job.file, job.filenameHints, { apiKey, openaiKey, model });
+        // Brief candidates only apply to video analysis (transcript-based match)
+        const callOpts = isVideoFile(job.file)
+          ? { apiKey, openaiKey, model, briefCandidates }
+          : { apiKey, openaiKey, model };
+        const result = await fn(job.file, job.filenameHints, callOpts);
         results[i] = { ok: true, result };
         onProgress?.(i, 'done', result);
       } catch (e) {
