@@ -12,6 +12,7 @@ const CONCURRENCY_STORAGE = 'pbg.anthropicConcurrency.v1';
 
 export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 export const SONNET_MODEL = 'claude-sonnet-4-6';
+export const OPUS_MODEL = 'claude-opus-4-6';
 export const DEFAULT_CONCURRENCY = 3;
 
 // -------- Settings --------
@@ -260,12 +261,18 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
 
 // -------- Cost estimate --------
 
-/** Rough cost estimate in USD for a batch. Haiku 4.5 input ~$1/MTok, output ~$5/MTok. */
+/** Rough cost estimate in USD for a batch. */
 export function estimateCost(numImages, model) {
   // Per image: ~1500 input tokens (image + prompt) + ~200 output tokens
-  const isHaiku = (model || getModel()).includes('haiku');
-  const inputCostPerMTok = isHaiku ? 1.0 : 3.0;     // Haiku 4.5 vs Sonnet 4.6
-  const outputCostPerMTok = isHaiku ? 5.0 : 15.0;
+  const m = model || getModel();
+  let inputCostPerMTok, outputCostPerMTok;
+  if (m.includes('haiku')) {
+    inputCostPerMTok = 1.0;   outputCostPerMTok = 5.0;     // Haiku 4.5
+  } else if (m.includes('opus')) {
+    inputCostPerMTok = 15.0;  outputCostPerMTok = 75.0;    // Opus 4.6
+  } else {
+    inputCostPerMTok = 3.0;   outputCostPerMTok = 15.0;    // Sonnet 4.6
+  }
   const totalInputTok = numImages * 1500;
   const totalOutputTok = numImages * 200;
   return (totalInputTok / 1_000_000) * inputCostPerMTok + (totalOutputTok / 1_000_000) * outputCostPerMTok;

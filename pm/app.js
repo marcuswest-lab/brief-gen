@@ -10,7 +10,7 @@ import { parseAdFilename, groupAdFiles, pickRepresentativeFile } from './lib/fil
 import {
   getApiKey, setApiKey, getModel, setModel, getConcurrency, setConcurrency,
   testApiKey, analyzeBatch, estimateCost,
-  DEFAULT_MODEL, SONNET_MODEL,
+  DEFAULT_MODEL, SONNET_MODEL, OPUS_MODEL,
 } from './lib/ad-analyzer.js';
 
 const STORAGE_KEY = 'pbg.pm.state.v1';
@@ -1302,8 +1302,9 @@ function openSettingsModal() {
   const modelField = el('div', { class: 'pm-input-field', style: 'margin-top: 14px' });
   modelField.appendChild(el('label', { for: 'settings-model' }, 'Model'));
   const modelSel = el('select', { id: 'settings-model' },
-    el('option', { value: DEFAULT_MODEL }, 'Haiku 4.5 — fast & cheap (~$1 per 100 ads)'),
-    el('option', { value: SONNET_MODEL }, 'Sonnet 4.6 — slower, more accurate (~$3 per 100)'),
+    el('option', { value: DEFAULT_MODEL }, 'Haiku 4.5 — fast & cheap (~$0.25 per 100 ads)'),
+    el('option', { value: SONNET_MODEL }, 'Sonnet 4.6 — balanced (~$0.75 per 100 ads)'),
+    el('option', { value: OPUS_MODEL }, 'Opus 4.6 — highest quality, slowest (~$3.75 per 100 ads)'),
   );
   modelSel.value = getModel();
   modelField.appendChild(modelSel);
