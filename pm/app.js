@@ -1093,6 +1093,14 @@ function renderAdCatBriefContextCard() {
   }
   card.appendChild(toggle);
 
+  // Model recommendation when brief is loaded
+  if (state.adCatBriefMode !== 'none' && getModel().includes('haiku')) {
+    card.appendChild(el('div', { class: 'pm-warn-banner', style: 'margin-bottom: 12px' },
+      el('strong', {}, '⚠️ For brief matching, switch to Sonnet 4.6 or Opus 4.6 in Settings.'),
+      ' Haiku 4.5 is too weak at fuzzy script matching across multiple candidate variations \u2014 you\'ll get wrong/missed matches frequently.',
+    ));
+  }
+
   if (state.adCatBriefMode === 'saved') {
     // Show video saved-briefs filtered to current client (or all if no client)
     const allBriefs = sortBriefsRecent(loadBriefs()).filter(b => b.briefType === 'video');
@@ -1346,6 +1354,54 @@ function renderAdCatPreview() {
     else statusEl.textContent = '';
     meta.appendChild(statusEl);
 
+    // After analysis, show diagnostics + manual override
+    if (g.status === 'done' && g.result) {
+      const r = g.result;
+
+      // Manual brief-match override (only for video + when brief candidates exist)
+      if (state.adCatMode === 'video' && state.adCatBriefMode !== 'none') {
+        const candidates = getAdCatBriefCandidates();
+        if (candidates && candidates.length > 0) {
+          const overrideRow = el('div', { class: 'ad-cat-override' });
+          overrideRow.appendChild(el('label', { style: 'font-size: 10px; color: var(--muted); display: block; margin-bottom: 2px' }, 'Brief variation:'));
+          const sel = el('select', {
+            class: 'ad-cat-override-select',
+            onchange: (e) => {
+              const newIdx = e.target.value === '' ? null : parseInt(e.target.value, 10);
+              g.result.matchedCandidateIndex = newIdx;
+              // Re-run mapping to apply the override
+              rebuildAdCatResult();
+            },
+          });
+          sel.appendChild(el('option', { value: '' }, '— no match (use AI fields) —'));
+          candidates.forEach((c, i) => {
+            const opt = el('option', { value: String(i) },
+              `#${c.variationIndex + 1}: ${(c.leadScript || '(blank)').slice(0, 50)}…`);
+            if (i === r.matchedCandidateIndex) opt.setAttribute('selected', '');
+            sel.appendChild(opt);
+          });
+          overrideRow.appendChild(sel);
+          meta.appendChild(overrideRow);
+        }
+      }
+
+      // Match rationale (clickable to expand)
+      if (r.matchRationale) {
+        const rationaleEl = el('details', { class: 'ad-cat-diag' });
+        rationaleEl.appendChild(el('summary', {}, '🔍 Why this match?'));
+        rationaleEl.appendChild(el('div', { class: 'ad-cat-diag-body' }, r.matchRationale));
+        meta.appendChild(rationaleEl);
+      }
+
+      // Transcript (clickable to expand)
+      if (r.transcript) {
+        const trEl = el('details', { class: 'ad-cat-diag' });
+        trEl.appendChild(el('summary', {}, '📝 Transcript'));
+        trEl.appendChild(el('div', { class: 'ad-cat-diag-body ad-cat-diag-transcript' }, r.transcript));
+        meta.appendChild(trEl);
+      }
+    }
+
     tile.appendChild(meta);
     grid.appendChild(tile);
   });
@@ -1511,7 +1567,10 @@ async function handleAdCatCategorize() {
 
   state.adCatRunning = false;
 
-  // Build the synthetic brief and run mapper
+  rebuildAdCatResult();
+}
+
+function rebuildAdCatResult() {
   const successful = state.adCatGroups.filter(g => g.status === 'done' && g.result);
   if (successful.length === 0) {
     flashStatus('No ads were successfully analyzed.', 'error');
@@ -1521,9 +1580,12 @@ async function handleAdCatCategorize() {
 
   const effectiveClient = getEffectiveClient();
   const isVideo = state.adCatMode === 'video';
+  const briefCandidates = getAdCatBriefCandidates();
 
   const variations = successful.map(g => {
     const r = g.result;
+    // Reset prior briefMatch state so re-runs reflect current matchedCandidateIndex
+    g.briefMatch = null;
 
     // Step 1: AI + filename baseline
     const leadType = g.parsed.leadType || r.leadType || '';

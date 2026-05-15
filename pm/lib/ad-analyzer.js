@@ -262,12 +262,21 @@ function buildVideoUserPrompt(filename, durationSec, filenameHints, transcript, 
   let briefMatchInstructions = '';
   if (briefCandidates && briefCandidates.length > 0) {
     const candidatesText = briefCandidates.map((c, i) =>
-      `[${i}] Brief: ${c.briefDisplayLabel} | Variation ${c.variationIndex + 1}\n  Lead Script: ${(c.leadScript || '(blank)').slice(0, 400)}\n  Body Script: ${(c.bodyScript || '(blank)').slice(0, 400)}`
+      `[${i}] Brief: ${c.briefDisplayLabel} | Variation ${c.variationIndex + 1}\n  Lead Script: ${(c.leadScript || '(blank)').slice(0, 600)}\n  Body Script: ${(c.bodyScript || '(blank)').slice(0, 600)}`
     ).join('\n\n');
-    briefMatchBlock = `\n\n=== CANDIDATE BRIEF VARIATIONS (already-written ad scripts) ===\n${candidatesText}\n=== END CANDIDATES ===\n`;
+    briefMatchBlock = `\n\n=== CANDIDATE BRIEF VARIATIONS (scripts that may have been recorded as this video) ===\n${candidatesText}\n=== END CANDIDATES ===\n`;
     briefMatchInstructions = `
 
-If the transcript above clearly matches one of the candidate brief variations (i.e., it's a recording of one of those scripts), set "matchedCandidateIndex" to that candidate's index number (e.g., 0, 1, 2...). If NO candidate matches confidently, set "matchedCandidateIndex" to null. Be strict — only match when the transcript is clearly a recording of that specific script (paraphrasing is OK, but topic similarity alone is not enough).`;
+BRIEF MATCHING (very important):
+- The transcript is a recording of a real human delivering one of the candidate scripts above.
+- Talent improvises, paraphrases, drops words, restructures sentences, and adds filler. The transcript will RARELY be word-for-word.
+- Match generously: if the transcript covers the same TOPIC + KEY PHRASES as a candidate's Lead Script (and roughly the same Body Script), that's a match.
+- Pay attention to the OPENING: does the talent's first 1-2 sentences riff on the candidate's Lead Script?
+- Don't require exact word match. Don't require all sentences to align. Don't require the same length.
+- If 2+ candidates seem similar, pick the one whose Lead Script is the closest match to the opening 1-2 sentences of the transcript.
+- Set "matchedCandidateIndex" to the integer index of the best match (e.g., 0, 1, 2...).
+- Only set to null if NO candidate's topic / key phrases overlap meaningfully (e.g., the video is about a completely different subject).
+- ALSO populate "matchRationale": one sentence explaining WHY you chose that index (or null), QUOTING the strongest matching phrase from the candidate's Lead Script.`;
   }
 
   const durStr = isFinite(durationSec) && durationSec > 0 ? ` (${Math.round(durationSec)}s long)` : '';
@@ -285,7 +294,8 @@ Return this exact JSON structure (and nothing else):
   "angleName": "<2-4 words describing the persuasion angle>",
   "styleName": "<2-4 words describing the video format, e.g. UGC Talking Head, Animated Explainer, Podcast Clip, Testimonial>",
   "rationale": "<one sentence explaining your Lead Type choice. QUOTE THE OPENING LINE OF THE TRANSCRIPT (or first visible caption) verbatim.>",
-  "matchedCandidateIndex": <integer index of matching candidate brief variation, or null if no match. Always include this field.>
+  "matchedCandidateIndex": <integer index of matching candidate brief variation, or null if no match. Always include this field.>,
+  "matchRationale": "<one sentence explaining the match decision. If matched, QUOTE the strongest overlapping phrase. If null, explain why no candidate fit. Empty string if no candidates were provided.>"
 }
 
 Lead Type definitions \u2014 pick based on the opening line specifically:
