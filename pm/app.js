@@ -1479,7 +1479,7 @@ function renderAdCatPreview() {
         // Transcript failed — make this loud so the PM knows brief matching can't work properly
         const labels = {
           'no-key': '⚠️ No OpenAI key — add one in Settings to enable transcription',
-          'too-big': '⚠️ Video too big for Whisper (max 25 MB)',
+          'too-big': '⚠️ Audio still over 25 MB after extraction (very long video?)',
           'error': '⚠️ Transcription failed',
         };
         const msg = labels[r.transcriptStatus] || '⚠️ No transcript';

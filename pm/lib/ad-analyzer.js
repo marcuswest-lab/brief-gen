@@ -118,27 +118,45 @@ function mediaTypeFor(filename) {
 const WHISPER_MAX_BYTES = 25 * 1024 * 1024; // OpenAI's hard limit
 
 /**
- * Transcribe a video (or audio) file via OpenAI Whisper. Whisper accepts
- * video files directly and pulls out the audio track itself.
+ * Transcribe a video (or audio) file via OpenAI Whisper.
+ *
+ * Strategy:
+ * 1. If the file is already small enough (<25 MB), upload as-is — Whisper
+ *    will demux audio itself.
+ * 2. Otherwise extract just the audio track in the browser (decode →
+ *    downsample to mono 16kHz → WAV). A typical full-length video drops
+ *    to ~1 MB per minute as a 16kHz mono WAV, so a 60-min video lands
+ *    well under the 25 MB cap.
  *
  * @returns {Promise<{text: string, status: 'ok'|'no-key'|'too-big'|'error', error?: string}>}
  */
 export async function transcribeVideoFile(file, opts = {}) {
   const apiKey = opts.openaiKey || getOpenAIKey();
   if (!apiKey) return { text: '', status: 'no-key' };
+
+  let uploadFile = file;
+
+  // For files over the limit, extract audio first
   if (file.size > WHISPER_MAX_BYTES) {
-    return {
-      text: '',
-      status: 'too-big',
-      error: `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — Whisper max is 25 MB.`,
-    };
+    try {
+      const audioBlob = await extractAudioWav(file);
+      if (audioBlob.size > WHISPER_MAX_BYTES) {
+        return {
+          text: '',
+          status: 'too-big',
+          error: `Even after extracting audio, file is ${(audioBlob.size / 1024 / 1024).toFixed(1)} MB \u2014 still over Whisper\u2019s 25 MB cap.`,
+        };
+      }
+      uploadFile = new File([audioBlob], 'audio.wav', { type: 'audio/wav' });
+    } catch (e) {
+      return { text: '', status: 'error', error: 'Audio extraction failed: ' + e.message };
+    }
   }
 
   const form = new FormData();
-  form.append('file', file);
+  form.append('file', uploadFile);
   form.append('model', 'whisper-1');
   form.append('response_format', 'text');
-  // Force English for ad copy; remove if multilingual support is needed
   form.append('language', 'en');
 
   try {
@@ -162,6 +180,88 @@ export async function transcribeVideoFile(file, opts = {}) {
     console.warn('Whisper transcription error:', e);
     return { text: '', status: 'error', error: e.message };
   }
+}
+
+/**
+ * Extract the audio track from a video file as a 16kHz mono WAV blob.
+ * Uses Web Audio API's decodeAudioData which handles MP4/MOV/WebM/etc.
+ *
+ * Note: decodeAudioData reads the ENTIRE file into memory. Very long videos
+ * (>30 min HD) may run out of memory. For ad creatives (typically <2 min)
+ * this is a non-issue.
+ */
+async function extractAudioWav(file) {
+  const ab = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await ctx.decodeAudioData(ab);
+  } finally {
+    ctx.close();
+  }
+  // Downmix to mono and resample to 16kHz using OfflineAudioContext
+  const targetRate = 16000;
+  const targetLen = Math.ceil(audioBuffer.duration * targetRate);
+  const offline = new OfflineAudioContext(1, targetLen, targetRate);
+  const src = offline.createBufferSource();
+  src.buffer = audioBuffer;
+  src.connect(offline.destination);
+  src.start(0);
+  const rendered = await offline.startRendering();
+  return audioBufferToWav(rendered);
+}
+
+/**
+ * Encode an AudioBuffer as a 16-bit PCM WAV Blob.
+ */
+function audioBufferToWav(buffer) {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const numFrames = buffer.length;
+  const bytesPerSample = 2; // 16-bit
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = numFrames * blockAlign;
+  const headerSize = 44;
+  const totalSize = headerSize + dataSize;
+
+  const ab = new ArrayBuffer(totalSize);
+  const dv = new DataView(ab);
+
+  // RIFF header
+  writeString(dv, 0, 'RIFF');
+  dv.setUint32(4, totalSize - 8, true);
+  writeString(dv, 8, 'WAVE');
+  // fmt chunk
+  writeString(dv, 12, 'fmt ');
+  dv.setUint32(16, 16, true);          // chunk size
+  dv.setUint16(20, 1, true);           // PCM format
+  dv.setUint16(22, numChannels, true);
+  dv.setUint32(24, sampleRate, true);
+  dv.setUint32(28, byteRate, true);
+  dv.setUint16(32, blockAlign, true);
+  dv.setUint16(34, 16, true);          // bits per sample
+  // data chunk
+  writeString(dv, 36, 'data');
+  dv.setUint32(40, dataSize, true);
+
+  // Interleave channels + write samples
+  let offset = headerSize;
+  const channels = [];
+  for (let c = 0; c < numChannels; c++) channels.push(buffer.getChannelData(c));
+  for (let i = 0; i < numFrames; i++) {
+    for (let c = 0; c < numChannels; c++) {
+      let s = Math.max(-1, Math.min(1, channels[c][i]));
+      s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      dv.setInt16(offset, s, true);
+      offset += 2;
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+function writeString(dv, offset, str) {
+  for (let i = 0; i < str.length; i++) dv.setUint8(offset + i, str.charCodeAt(i));
 }
 
 // -------- Video keyframe extraction --------
