@@ -46,6 +46,9 @@ const state = {
   adCatBriefMode: 'none',   // 'none' | 'saved' | 'paste'
   adCatBriefId: null,       // when adCatBriefMode === 'saved'
   adCatBriefText: '',       // when adCatBriefMode === 'paste'
+  // Optional URL overrides (populate Request Doc / Folder Link in tracker output)
+  adCatRequestDoc: '',
+  adCatFolderUrl: '',
 };
 
 // -------- Persistence --------
@@ -69,6 +72,8 @@ function saveState() {
       adCatBriefMode: state.adCatBriefMode,
       adCatBriefId: state.adCatBriefId,
       adCatBriefText: state.adCatBriefText,
+      adCatRequestDoc: state.adCatRequestDoc,
+      adCatFolderUrl: state.adCatFolderUrl,
     }));
   } catch (e) {
     console.warn('Save failed:', e);
@@ -1007,6 +1012,9 @@ function renderAdCategorizer() {
     wrap.appendChild(renderAdCatBriefContextCard());
   }
 
+  // URL inputs card (Request Doc + Folder Link override)
+  wrap.appendChild(renderAdCatUrlInputsCard());
+
   // Drop zone + file picker
   const inputCard = el('div', { class: 'card' });
   const dropZone = el('div', {
@@ -1068,6 +1076,58 @@ function renderAdCategorizer() {
   if (state.adCatResult) {
     wrap.appendChild(renderResultPanel(state.adCatResult));
   }
+}
+
+function renderAdCatUrlInputsCard() {
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h3', { style: 'margin: 0 0 4px' }, 'Tracker URLs (optional)'));
+  const client = getEffectiveClient();
+  const folderHint = client?.creative_folder_url
+    ? `Defaults to ${client.name}'s folder URL if blank.`
+    : 'Leave blank if you don\'t have one.';
+  card.appendChild(el('p', { class: 'pm-help', style: 'margin: 0 0 12px' },
+    `Pre-fill the Request Doc and Folder Link columns in the tracker output. ${folderHint}`
+  ));
+
+  const row = el('div', { class: 'pm-input-row' });
+
+  const reqField = el('div', { class: 'pm-input-field' });
+  reqField.appendChild(el('label', { for: 'ad-cat-request-doc' },
+    'Request Doc URL', el('span', { class: 'pm-hint-inline' }, ' (goes into Request Doc column)')));
+  const reqInput = el('input', {
+    id: 'ad-cat-request-doc',
+    type: 'text',
+    placeholder: 'https://docs.google.com/document/d/...',
+    oninput: (e) => {
+      state.adCatRequestDoc = e.target.value;
+      saveState();
+      // If a result is already shown, rebuild it so the new URL flows in
+      if (state.adCatResult) rebuildAdCatResult();
+    },
+  });
+  reqInput.value = state.adCatRequestDoc;
+  reqField.appendChild(reqInput);
+  row.appendChild(reqField);
+
+  const folderField = el('div', { class: 'pm-input-field' });
+  folderField.appendChild(el('label', { for: 'ad-cat-folder-url' },
+    'Folder Link URL', el('span', { class: 'pm-hint-inline' }, ' (goes into Folder Link column; overrides client default)')));
+  const folderInput = el('input', {
+    id: 'ad-cat-folder-url',
+    type: 'text',
+    placeholder: client?.creative_folder_url || 'https://drive.google.com/drive/folders/...',
+    oninput: (e) => {
+      state.adCatFolderUrl = e.target.value;
+      saveState();
+      if (state.adCatResult) rebuildAdCatResult();
+    },
+  });
+  folderInput.value = state.adCatFolderUrl;
+  folderField.appendChild(folderInput);
+  row.appendChild(folderField);
+
+  card.appendChild(row);
+  return card;
 }
 
 function renderAdCatBriefContextCard() {
@@ -1354,6 +1414,16 @@ function renderAdCatPreview() {
     else statusEl.textContent = '';
     meta.appendChild(statusEl);
 
+    // Retry button for failed tiles
+    if (g.status === 'error' && !state.adCatRunning) {
+      meta.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-secondary btn-small',
+        style: 'margin-top: 6px; width: 100%',
+        onclick: () => handleAdCatRetry(idx),
+      }, '🔁 Retry this'));
+    }
+
     // After analysis, show diagnostics + manual override
     if (g.status === 'done' && g.result) {
       const r = g.result;
@@ -1601,6 +1671,44 @@ async function handleAdCatCategorize() {
   rebuildAdCatResult();
 }
 
+async function handleAdCatRetry(idx) {
+  const g = state.adCatGroups[idx];
+  if (!g || state.adCatRunning) return;
+  state.adCatRunning = true;
+  // Reset just this tile
+  g.status = 'pending';
+  g.result = null;
+  g.error = null;
+  g.briefMatch = null;
+  renderAdCategorizer();
+
+  const job = {
+    file: pickRepresentativeFile(g),
+    filenameHints: {
+      ideaName: g.parsed.ideaName,
+      leadType: g.parsed.leadType,
+      cid: g.parsed.cid,
+    },
+  };
+  const briefCandidates = getAdCatBriefCandidates();
+
+  try {
+    const results = await analyzeBatch([job], (i, status, payload) => {
+      g.status = status;
+      if (status === 'done') g.result = payload;
+      if (status === 'error') g.error = payload?.message || 'error';
+      const oldPreview = document.querySelector('.ad-cat-grid')?.parentElement;
+      if (oldPreview) oldPreview.replaceWith(renderAdCatPreview());
+    }, { briefCandidates });
+    if (results[0]?.ok) flashStatus('Retry succeeded.');
+  } catch (e) {
+    flashStatus('Retry failed: ' + e.message, 'error');
+  } finally {
+    state.adCatRunning = false;
+  }
+  rebuildAdCatResult();
+}
+
 function rebuildAdCatResult() {
   const successful = state.adCatGroups.filter(g => g.status === 'done' && g.result);
   if (successful.length === 0) {
@@ -1693,9 +1801,10 @@ function rebuildAdCatResult() {
   };
   try {
     const result = mapBriefToTracker(fakeBrief, {
-      requestDoc: '',
+      requestDoc: state.adCatRequestDoc || '',
       clientTrackerOverrides: effectiveClient?.tracker_overrides,
-      clientFolderUrl: effectiveClient?.creative_folder_url,
+      // PM-supplied folder URL takes priority over the client default
+      clientFolderUrl: state.adCatFolderUrl || effectiveClient?.creative_folder_url,
     });
 
     // Append a "client typically supplies" note where relevant

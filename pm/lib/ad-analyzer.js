@@ -14,7 +14,12 @@ const CONCURRENCY_STORAGE = 'pbg.anthropicConcurrency.v1';
 export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 export const SONNET_MODEL = 'claude-sonnet-4-6';
 export const OPUS_MODEL = 'claude-opus-4-6';
-export const DEFAULT_CONCURRENCY = 3;
+// Lowered from 3 to 2: heavy video batches with Whisper + Anthropic in
+// parallel × 3 was hanging the browser for some users.
+export const DEFAULT_CONCURRENCY = 2;
+// Hard per-video timeout (ms). If a single video doesn't finish by this,
+// abort it and let the rest of the batch continue.
+export const PER_ITEM_TIMEOUT_MS = 120_000;
 
 // -------- Settings --------
 
@@ -162,7 +167,10 @@ export async function transcribeVideoFile(file, opts = {}) {
 // -------- Video keyframe extraction --------
 
 const NUM_KEYFRAMES = 5;
-const VIDEO_FRAME_MAX_DIM = 1024; // px — cap to keep token cost reasonable
+// Reduced from 1024 to 640 to cut Claude payload roughly in half per frame
+// (faster upload, less browser memory, fewer timeouts on big batches).
+// Captions in ad creatives are still readable at 640px.
+const VIDEO_FRAME_MAX_DIM = 640;
 
 /**
  * Returns true if file appears to be a video by extension.
@@ -550,29 +558,46 @@ export async function analyzeBatch(jobs, onProgress, opts = {}) {
       onProgress?.(i, 'analyzing');
       try {
         const fn = isVideoFile(job.file) ? analyzeVideoFile : analyzeAdImage;
-        // Brief candidates only apply to video analysis (transcript-based match)
         const callOpts = isVideoFile(job.file)
           ? { apiKey, openaiKey, model, briefCandidates }
           : { apiKey, openaiKey, model };
-        const result = await fn(job.file, job.filenameHints, callOpts);
+        // Race the call against a hard per-item timeout so one slow/hung
+        // video can't block the whole batch indefinitely.
+        const result = await withTimeout(
+          fn(job.file, job.filenameHints, callOpts),
+          PER_ITEM_TIMEOUT_MS,
+          `Timed out after ${PER_ITEM_TIMEOUT_MS / 1000}s`,
+        );
         results[i] = { ok: true, result };
         onProgress?.(i, 'done', result);
       } catch (e) {
         results[i] = { ok: false, error: e.message };
         onProgress?.(i, 'error', e);
       }
+      // Yield to the UI thread between jobs so the browser stays responsive.
+      await new Promise(r => setTimeout(r, 0));
     }
   });
   await Promise.all(workers);
   return results;
 }
 
+function withTimeout(promise, ms, msg) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(msg)), ms);
+    promise.then(
+      v => { clearTimeout(t); resolve(v); },
+      e => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
 // -------- Cost estimate --------
 
 /** Rough cost estimate in USD for a batch. */
 export function estimateCost(numItems, model, mediaKind = 'static') {
-  // Per static: ~1500 input tokens (image + prompt) + ~200 output tokens
-  // Per video: ~5500 input tokens (5 keyframes + prompt) + ~250 output tokens
+  // Per static: ~1200 input tokens (image + prompt) + ~200 output tokens
+  // Per video: ~3500 input tokens (5 keyframes at 640px + prompt) + ~250 output
   const m = model || getModel();
   let inputCostPerMTok, outputCostPerMTok;
   if (m.includes('haiku')) {
@@ -582,7 +607,7 @@ export function estimateCost(numItems, model, mediaKind = 'static') {
   } else {
     inputCostPerMTok = 3.0;   outputCostPerMTok = 15.0;
   }
-  const inputPerItem = mediaKind === 'video' ? 5500 : 1500;
+  const inputPerItem = mediaKind === 'video' ? 3500 : 1200;
   const outputPerItem = mediaKind === 'video' ? 250 : 200;
   const totalInputTok = numItems * inputPerItem;
   const totalOutputTok = numItems * outputPerItem;
