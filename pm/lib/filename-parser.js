@@ -32,6 +32,12 @@ export function parseAdFilename(filename) {
     angleName: '',
     baseName: filename,     // filename minus extension and ratio suffix
     ext: '',
+    // Variation number explicitly stated in filename, used to bind to the Nth
+    // brief variation when matching. Examples that yield 3:
+    //   "Office Ads - Lead 3.mp4"    -> 3
+    //   "27_Office Ads - Lead 3.mp4" -> 3 (pattern "Lead 3", not the prefix)
+    //   "PB - Idea - Promise Lead 3 - CIDxxx" -> 3
+    variationNumber: null,
   };
 
   // Extract extension
@@ -57,8 +63,10 @@ export function parseAdFilename(filename) {
   if (out.ratio) {
     base = base.replace(new RegExp(`[_\\s-]${out.ratio}$`, 'i'), '');
   }
-  // Strip trailing " - CIDxxx" segment for cleaner display
-  base = base.replace(new RegExp(`\\s*[-_]\\s*${out.cidPrefix}${out.cid}.*$`, 'i'), '').trim();
+  // Strip trailing " - CIDxxx" segment for cleaner display (only if CID exists)
+  if (out.cid && out.cidPrefix) {
+    base = base.replace(new RegExp(`\\s*[-_]\\s*${out.cidPrefix}${out.cid}.*$`, 'i'), '').trim();
+  }
   out.baseName = base;
 
   // Try Dan-Henry-style segment parse: "{prefix} - {Idea Name} - {Lead Type Lead [N]}"
@@ -83,6 +91,17 @@ export function parseAdFilename(filename) {
       out.leadType = normalized;
       out.ideaName = segs[0];
     }
+  }
+
+  // Extract variation number ("Lead 3", "Variation 5", "Hook 2", or trailing
+  // " - 4" / " 4"). We deliberately scan the FULL base name (not just
+  // segments) because patterns like "Office Ads - Lead 5" should match.
+  const variationMatch =
+    base.match(/(?:Lead|Variation|Hook|Body|CTA|Var|V)\s+(\d{1,2})\b/i)
+    || base.match(/[-_\s](\d{1,2})\s*$/);
+  if (variationMatch) {
+    const n = parseInt(variationMatch[1], 10);
+    if (n >= 1 && n <= 50) out.variationNumber = n;
   }
 
   return out;

@@ -1369,8 +1369,14 @@ function renderAdCatPreview() {
             onchange: (e) => {
               const newIdx = e.target.value === '' ? null : parseInt(e.target.value, 10);
               g.result.matchedCandidateIndex = newIdx;
+              g.briefMatchManual = true; // PM said so — sticky over filename auto-match
               // Re-run mapping to apply the override
               rebuildAdCatResult();
+              // Also flash a status so it's clear the change took effect
+              flashStatus(newIdx === null
+                ? 'Match cleared. Tracker rows updated.'
+                : `Matched to brief variation #${newIdx + 1}. Tracker rows updated.`,
+                'success');
             },
           });
           sel.appendChild(el('option', { value: '' }, '— no match (use AI fields) —'));
@@ -1586,6 +1592,23 @@ function rebuildAdCatResult() {
     const r = g.result;
     // Reset prior briefMatch state so re-runs reflect current matchedCandidateIndex
     g.briefMatch = null;
+
+    // FILENAME-BASED MATCH PRIORITY: if the filename explicitly contains a
+    // variation number (e.g. "Office Ads - Lead 3.mp4") and the brief has
+    // that many variations, prefer that over whatever Claude guessed.
+    // Only do this when the PM hasn't manually overridden (we detect manual
+    // override by g.briefMatchManual being set).
+    if (isVideo && briefCandidates && !g.briefMatchManual) {
+      const vn = g.parsed.variationNumber;
+      if (Number.isInteger(vn) && vn >= 1 && vn <= briefCandidates.length) {
+        const candIdx = vn - 1; // candidates are 0-indexed in array order
+        if (r.matchedCandidateIndex !== candIdx) {
+          // Override Claude's guess with the filename-based match
+          r.matchedCandidateIndex = candIdx;
+          r._matchSource = 'filename';
+        }
+      }
+    }
 
     // Step 1: AI + filename baseline
     const leadType = g.parsed.leadType || r.leadType || '';
