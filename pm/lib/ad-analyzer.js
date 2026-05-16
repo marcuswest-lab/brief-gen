@@ -116,13 +116,17 @@ const WHISPER_MAX_BYTES = 25 * 1024 * 1024; // OpenAI's hard limit
  * Transcribe a video (or audio) file via OpenAI Whisper. Whisper accepts
  * video files directly and pulls out the audio track itself.
  *
- * @returns {Promise<string>} the transcript text, or '' on failure / no key
+ * @returns {Promise<{text: string, status: 'ok'|'no-key'|'too-big'|'error', error?: string}>}
  */
 export async function transcribeVideoFile(file, opts = {}) {
   const apiKey = opts.openaiKey || getOpenAIKey();
-  if (!apiKey) return ''; // silently skip if no key configured
+  if (!apiKey) return { text: '', status: 'no-key' };
   if (file.size > WHISPER_MAX_BYTES) {
-    return ''; // too big — skip
+    return {
+      text: '',
+      status: 'too-big',
+      error: `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — Whisper max is 25 MB.`,
+    };
   }
 
   const form = new FormData();
@@ -141,13 +145,17 @@ export async function transcribeVideoFile(file, opts = {}) {
     if (!res.ok) {
       const errText = await res.text();
       console.warn('Whisper transcription failed:', res.status, errText.slice(0, 200));
-      return '';
+      return {
+        text: '',
+        status: 'error',
+        error: `HTTP ${res.status}: ${errText.slice(0, 200)}`,
+      };
     }
     const text = await res.text();
-    return text.trim();
+    return { text: text.trim(), status: 'ok' };
   } catch (e) {
     console.warn('Whisper transcription error:', e);
-    return '';
+    return { text: '', status: 'error', error: e.message };
   }
 }
 
@@ -434,10 +442,13 @@ export async function analyzeVideoFile(file, filenameHints, opts) {
   const model = opts.model || getModel();
 
   // Transcribe + extract keyframes in parallel — both are independent
-  const [{ duration, frames }, transcript] = await Promise.all([
+  const [{ duration, frames }, transcribeResult] = await Promise.all([
     extractKeyframes(file),
     transcribeVideoFile(file, { openaiKey: opts.openaiKey }),
   ]);
+  const transcript = transcribeResult.text;
+  const transcriptStatus = transcribeResult.status;
+  const transcriptError = transcribeResult.error;
 
   // Build the user content: each keyframe as an image block + a final text block
   const content = [];
@@ -483,7 +494,14 @@ export async function analyzeVideoFile(file, filenameHints, opts) {
     const json = await res.json();
     const text = json.content?.[0]?.text || '';
     const parsed = parseJsonResponse(text);
-    return { ...parsed, durationSec: duration, keyframes: frames, transcript };
+    return {
+      ...parsed,
+      durationSec: duration,
+      keyframes: frames,
+      transcript,
+      transcriptStatus,
+      transcriptError,
+    };
   }
   throw new Error('Rate-limited after retries');
 }

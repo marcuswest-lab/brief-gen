@@ -1399,12 +1399,22 @@ function renderAdCatPreview() {
         meta.appendChild(rationaleEl);
       }
 
-      // Transcript (clickable to expand)
+      // Transcript (clickable to expand) + transcript status
       if (r.transcript) {
         const trEl = el('details', { class: 'ad-cat-diag' });
         trEl.appendChild(el('summary', {}, '📝 Transcript'));
         trEl.appendChild(el('div', { class: 'ad-cat-diag-body ad-cat-diag-transcript' }, r.transcript));
         meta.appendChild(trEl);
+      } else if (r.transcriptStatus && r.transcriptStatus !== 'ok') {
+        // Transcript failed — make this loud so the PM knows brief matching can't work properly
+        const labels = {
+          'no-key': '⚠️ No OpenAI key — add one in Settings to enable transcription',
+          'too-big': '⚠️ Video too big for Whisper (max 25 MB)',
+          'error': '⚠️ Transcription failed',
+        };
+        const msg = labels[r.transcriptStatus] || '⚠️ No transcript';
+        const errEl = el('div', { class: 'ad-cat-transcript-warn', title: r.transcriptError || '' }, msg);
+        meta.appendChild(errEl);
       }
     }
 
