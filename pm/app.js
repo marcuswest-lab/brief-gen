@@ -1547,6 +1547,15 @@ async function handleAdCatCategorize() {
 
   state.adCatRunning = true;
   state.adCatResult = null;
+  // Reset per-tile state from any prior run so reruns start clean
+  for (const g of state.adCatGroups) {
+    g.status = 'pending';
+    g.result = null;
+    g.error = null;
+    g.briefMatch = null;
+    // NOTE: g.briefMatchManual is intentionally NOT reset \u2014 the PM's manual
+    // overrides survive re-categorization.
+  }
   renderAdCategorizer();
 
   const jobs = state.adCatGroups.map(g => ({
@@ -1562,16 +1571,22 @@ async function handleAdCatCategorize() {
   // the matching candidate's index per video, and we look it up here.
   const briefCandidates = getAdCatBriefCandidates();
 
-  await analyzeBatch(jobs, (idx, status, payload) => {
-    state.adCatGroups[idx].status = status;
-    if (status === 'done') state.adCatGroups[idx].result = payload;
-    if (status === 'error') state.adCatGroups[idx].error = payload?.message || 'error';
-    // Re-render preview only (keep cost actions)
-    const oldPreview = document.querySelector('.ad-cat-grid')?.parentElement;
-    if (oldPreview) oldPreview.replaceWith(renderAdCatPreview());
-  }, { briefCandidates });
-
-  state.adCatRunning = false;
+  try {
+    await analyzeBatch(jobs, (idx, status, payload) => {
+      state.adCatGroups[idx].status = status;
+      if (status === 'done') state.adCatGroups[idx].result = payload;
+      if (status === 'error') state.adCatGroups[idx].error = payload?.message || 'error';
+      // Re-render preview only (keep cost actions)
+      const oldPreview = document.querySelector('.ad-cat-grid')?.parentElement;
+      if (oldPreview) oldPreview.replaceWith(renderAdCatPreview());
+    }, { briefCandidates });
+  } catch (e) {
+    console.error('analyzeBatch failed:', e);
+    flashStatus('Categorization failed: ' + e.message, 'error');
+  } finally {
+    // Always clear the running flag so the UI doesn't lock up forever on errors
+    state.adCatRunning = false;
+  }
 
   rebuildAdCatResult();
 }
