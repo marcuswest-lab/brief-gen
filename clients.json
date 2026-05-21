@@ -35,6 +35,24 @@
       "defaults": {
         "Copywriter": "Nate",
         "Ad Platform": "Meta"
+      },
+      "tracker_overrides": {
+        "static": {
+          "block2": {
+            "insert": [
+              { "after": "Variation Name", "label": "Hook Name", "source": "variation:Hook Name" }
+            ]
+          }
+        },
+        "video": {
+          "block2": {
+            "startCol": "V",
+            "insert": [
+              { "after": "Designer", "label": "Hook Name", "source": "variation:Hook Name" },
+              { "after": "Variation Name", "label": "Old Name" }
+            ]
+          }
+        }
       }
     },
     {
