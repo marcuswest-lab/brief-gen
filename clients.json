@@ -38,79 +38,20 @@
       },
       "tracker_overrides": {
         "static": {
-          "block1": {
-            "replaceFields": [
-              { "label": "Approved?",          "source": "blank" },
-              { "label": "Created Date",       "source": "today" },
-              { "label": "Launch Date",        "source": "blank" },
-              { "label": "Status",             "source": "blank" },
-              { "label": "Type",               "source": "overview:Net New/Iteration" },
-              { "label": "Creative Name",      "source": "blank" },
-              { "label": "Performance",        "source": "blank" },
-              { "label": "New Name",           "source": "blank" },
-              { "label": "New Performance",    "source": "blank" },
-              { "label": "Request Doc",        "source": "requestDoc", "renderAs": "url" },
-              { "label": "Folder Link",        "source": "overview:Photo Folder|fallback:clientFolderUrl", "renderAs": "url" },
-              { "label": "File Link",          "source": "blank" },
-              { "label": "Static Copy ID",     "source": "blank" },
-              { "label": "Static Visual ID",   "source": "blank" },
-              { "label": "Static Copy Name",   "source": "blank" },
-              { "label": "Static Visual Name", "source": "blank" },
-              { "label": "Old Name",           "source": "blank" },
-              { "label": "Comments",           "source": "blank" }
+          "block2": {
+            "insert": [
+              { "after": "Variation Name", "label": "Hook Name", "source": "variation:Hook Name" }
             ]
-          },
-          "block2": { "replaceFields": [] }
+          }
         },
         "video": {
-          "block1": {
-            "replaceFields": [
-              { "label": "Approved?",          "source": "blank" },
-              { "label": "Created Date",       "source": "today" },
-              { "label": "Launch Date",        "source": "blank" },
-              { "label": "Status",             "source": "blank" },
-              { "label": "Type",               "source": "overview:Net New/Iteration" },
-              { "label": "Creative Name",      "source": "blank" },
-              { "label": "Performance",        "source": "blank" },
-              { "label": "New Name",           "source": "blank" },
-              { "label": "New Performance",    "source": "blank" },
-              { "label": "Request Doc",        "source": "requestDoc", "renderAs": "url" },
-              { "label": "File folder",        "source": "overview:Footage Folder|fallback:clientFolderUrl", "renderAs": "url" },
-              { "label": "File Link",          "source": "blank" },
-              { "label": "Video Hook ID",      "source": "blank" },
-              { "label": "Video Body ID",      "source": "blank" },
-              { "label": "Video Visual ID",    "source": "blank" },
-              { "label": "Video Hook Name",    "source": "blank" },
-              { "label": "Video Body Name",    "source": "blank" },
-              { "label": "Video Visual Name",  "source": "blank" },
-              { "label": "Old Name",           "source": "blank" },
-              { "label": "Old Name 2",         "source": "blank" },
-              { "label": "Old Name 3",         "source": "blank" },
-              { "label": "Comments",           "source": "blank" }
+          "block2": {
+            "startCol": "V",
+            "insert": [
+              { "after": "Designer", "label": "Hook Name", "source": "variation:Hook Name" },
+              { "after": "Variation Name", "label": "Old Name" }
             ]
-          },
-          "block2": { "replaceFields": [] }
-        },
-        "copy": {
-          "block1": {
-            "replaceFields": [
-              { "label": "Approved?",       "source": "blank" },
-              { "label": "Created Date",    "source": "today" },
-              { "label": "Launch Date",     "source": "blank" },
-              { "label": "Status",          "source": "blank" },
-              { "label": "Type",            "source": "overview:Net New/Iteration" },
-              { "label": "Creative Name",   "source": "blank" },
-              { "label": "Performance",     "source": "blank" },
-              { "label": "Request Doc",     "source": "requestDoc", "renderAs": "url" },
-              { "label": "File Link",       "source": "blank" },
-              { "label": "Copy Hook ID",    "source": "blank" },
-              { "label": "Copy Body ID",    "source": "blank" },
-              { "label": "Copy Hook Name",  "source": "blank" },
-              { "label": "Copy Body Name",  "source": "blank" },
-              { "label": "Hypothesis",      "source": "blank" }
-            ]
-          },
-          "block2": { "replaceFields": [] }
+          }
         }
       }
     },
