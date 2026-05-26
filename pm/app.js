@@ -14,6 +14,11 @@ import {
   testApiKey, analyzeBatch, estimateCost, isVideoFile,
   DEFAULT_MODEL, SONNET_MODEL, OPUS_MODEL,
 } from './lib/ad-analyzer.js';
+import {
+  buildMeetingNotesHtml, suggestedMeetingFilename,
+  buildWeeklyUpdatesHtml, suggestedWeeklyFilename,
+  readWorkbookFromFile,
+} from './lib/tracker-pipeline.js';
 
 const STORAGE_KEY = 'pbg.pm.state.v1';
 const CLIENTS_STORAGE_KEY = 'pbg.localClients.v1';
@@ -49,6 +54,19 @@ const state = {
   // Optional URL overrides (populate Request Doc / Folder Link in tracker output)
   adCatRequestDoc: '',
   adCatFolderUrl: '',
+
+  // Meeting Notes (Launched this week + Testing + Production)
+  // Files & generated HTML are kept in-memory only (not persisted).
+  meetingFiles: [],      // [{ name, size, workbook }]
+  meetingHtml: '',
+  meetingFilename: '',
+  meetingError: '',
+
+  // Weekly Creative Updates (Ready to Launch + In Production)
+  weeklyFiles: [],
+  weeklyHtml: '',
+  weeklyFilename: '',
+  weeklyError: '',
 };
 
 // -------- Persistence --------
@@ -208,6 +226,8 @@ function renderTabs() {
     { id: 'brief-to-tracker', label: 'Brief → Tracker' },
     { id: 'tracker-to-brief', label: 'Tracker → Brief' },
     { id: 'ad-categorizer', label: '🤖 Ad Categorizer' },
+    { id: 'meeting-notes', label: '📝 Meeting Notes' },
+    { id: 'weekly-updates', label: '📅 Weekly Creative Updates' },
   ];
   for (const t of tabs) {
     wrap.appendChild(el('button', {
@@ -1977,6 +1997,210 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
+// -------- Tab 4 & 5: Tracker report tabs (Meeting Notes + Weekly Updates) --------
+
+/**
+ * Render a generic "drop .xlsx → HTML report" tab. Both Meeting Notes and
+ * Weekly Creative Updates use this same UI pattern, parameterized by the
+ * builder function and a label.
+ *
+ * cfg = {
+ *   stateKey: 'meeting' | 'weekly',
+ *   title, intro, accept, buttonLabel,
+ *   buildHtml(workbooksWithNames) -> html string,
+ *   suggestedFilename() -> string,
+ * }
+ */
+function renderTrackerReportTab(cfg) {
+  const wrap = document.getElementById('pm-content');
+  wrap.innerHTML = '';
+
+  const filesKey = `${cfg.stateKey}Files`;
+  const htmlKey = `${cfg.stateKey}Html`;
+  const filenameKey = `${cfg.stateKey}Filename`;
+  const errorKey = `${cfg.stateKey}Error`;
+
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h2', {}, cfg.title));
+  card.appendChild(el('p', { class: 'muted', style: 'margin-top:0;' }, cfg.intro));
+
+  // Dropzone
+  const dropzone = el('div', {
+    class: 'tracker-report-dropzone',
+    onclick: () => fileInput.click(),
+    ondragover: e => { e.preventDefault(); dropzone.classList.add('drag-active'); },
+    ondragleave: () => dropzone.classList.remove('drag-active'),
+    ondrop: e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-active');
+      handleFiles(e.dataTransfer?.files);
+    },
+  });
+  dropzone.appendChild(el('div', { style: 'font-weight:500;' }, 'Drag & drop tracker .xlsx files here'));
+  dropzone.appendChild(el('div', { class: 'muted', style: 'font-size:0.85em;margin-top:4px;' }, 'or click to choose files'));
+  dropzone.appendChild(el('div', { class: 'muted', style: 'font-size:0.75em;margin-top:8px;' }, 'Allowed: .xlsx, .xlsm'));
+  const fileInput = el('input', {
+    type: 'file', multiple: true, accept: '.xlsx,.xlsm',
+    style: 'display:none;',
+    onchange: e => { handleFiles(e.target.files); e.target.value = ''; },
+  });
+  dropzone.appendChild(fileInput);
+  card.appendChild(dropzone);
+
+  // File list
+  if (state[filesKey].length) {
+    const list = el('ul', { class: 'tracker-report-filelist' });
+    state[filesKey].forEach((f, i) => {
+      list.appendChild(el('li', {},
+        el('span', {}, f.name),
+        el('span', { class: 'muted', style: 'margin-left:auto;font-size:0.85em;' }, fmtBytes(f.size)),
+        el('button', {
+          type: 'button',
+          class: 'btn-link',
+          style: 'margin-left:8px;',
+          onclick: () => {
+            state[filesKey].splice(i, 1);
+            state[htmlKey] = '';
+            state[errorKey] = '';
+            renderAll();
+          },
+        }, '✕'),
+      ));
+    });
+    card.appendChild(list);
+  }
+
+  // Action row
+  const actions = el('div', { class: 'form-row', style: 'margin-top:12px;gap:8px;' });
+  const genBtn = el('button', {
+    type: 'button',
+    class: 'btn-primary',
+    onclick: generate,
+    disabled: state[filesKey].length === 0,
+  }, cfg.buttonLabel);
+  actions.appendChild(genBtn);
+  if (state[filesKey].length || state[htmlKey]) {
+    actions.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-secondary',
+      onclick: () => {
+        state[filesKey] = [];
+        state[htmlKey] = '';
+        state[filenameKey] = '';
+        state[errorKey] = '';
+        renderAll();
+      },
+    }, 'Clear'));
+  }
+  card.appendChild(actions);
+
+  if (state[errorKey]) {
+    card.appendChild(el('div', { class: 'status-msg error', style: 'margin-top:12px;' }, state[errorKey]));
+  }
+
+  wrap.appendChild(card);
+
+  // Result card
+  if (state[htmlKey]) {
+    const resCard = el('div', { class: 'card', style: 'margin-top:16px;' });
+    const head = el('div', { class: 'form-row', style: 'align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;' });
+    head.appendChild(el('h3', { style: 'margin:0;' }, 'Preview'));
+    const headActions = el('div', { class: 'form-row', style: 'gap:8px;' });
+    headActions.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-secondary',
+      onclick: async () => {
+        const ok = await copyToClipboard(state[htmlKey]);
+        flashStatus(ok ? 'HTML copied to clipboard' : 'Copy failed', ok ? 'success' : 'error');
+      },
+    }, 'Copy HTML'));
+    headActions.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-primary',
+      onclick: () => {
+        const blob = new Blob([state[htmlKey]], { type: 'text/html' });
+        saveAs(blob, state[filenameKey] || 'report.html');
+      },
+    }, 'Download .html'));
+    head.appendChild(headActions);
+    resCard.appendChild(head);
+
+    const iframe = el('iframe', {
+      class: 'tracker-report-preview',
+      sandbox: 'allow-same-origin',
+    });
+    iframe.srcdoc = state[htmlKey];
+    resCard.appendChild(iframe);
+    wrap.appendChild(resCard);
+  }
+
+  async function handleFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const rejected = [];
+    for (const file of fileList) {
+      const ext = file.name.toLowerCase().split('.').pop();
+      if (ext !== 'xlsx' && ext !== 'xlsm') {
+        rejected.push(`${file.name} (not .xlsx)`);
+        continue;
+      }
+      if (state[filesKey].some(f => f.name === file.name && f.size === file.size)) continue;
+      try {
+        const workbook = await readWorkbookFromFile(file);
+        state[filesKey].push({ name: file.name, size: file.size, workbook });
+      } catch (e) {
+        rejected.push(`${file.name} (parse error: ${e.message})`);
+      }
+    }
+    state[errorKey] = rejected.length ? `Skipped: ${rejected.join(', ')}` : '';
+    state[htmlKey] = '';
+    renderAll();
+  }
+
+  function generate() {
+    if (!state[filesKey].length) return;
+    try {
+      const workbooksWithNames = state[filesKey].map(f => ({ workbook: f.workbook, filename: f.name }));
+      state[htmlKey] = cfg.buildHtml(workbooksWithNames);
+      state[filenameKey] = cfg.suggestedFilename();
+      state[errorKey] = '';
+      flashStatus(`${cfg.title} generated.`);
+    } catch (e) {
+      console.error(e);
+      state[errorKey] = `Generation failed: ${e.message}`;
+      state[htmlKey] = '';
+    }
+    renderAll();
+  }
+}
+
+function renderMeetingNotes() {
+  renderTrackerReportTab({
+    stateKey: 'meeting',
+    title: '📝 Meeting Notes',
+    intro: 'Drop one or more Creative Tracker .xlsx files. Generates an HTML report with three sections per client — Launched this week, Testing pipeline, Production pipeline.',
+    buttonLabel: 'Generate Meeting Notes',
+    buildHtml: buildMeetingNotesHtml,
+    suggestedFilename: suggestedMeetingFilename,
+  });
+}
+
+function renderWeeklyUpdates() {
+  renderTrackerReportTab({
+    stateKey: 'weekly',
+    title: '📅 Weekly Creative Updates',
+    intro: 'Drop one or more Creative Tracker .xlsx files. Generates an HTML report with two sections per client — Ready to Launch and In Production.',
+    buttonLabel: 'Generate Weekly Updates',
+    buildHtml: buildWeeklyUpdatesHtml,
+    suggestedFilename: suggestedWeeklyFilename,
+  });
+}
+
+function fmtBytes(n) {
+  if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  if (n > 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
 // -------- Render --------
 
 function renderAll() {
@@ -1985,6 +2209,10 @@ function renderAll() {
     renderAdCategorizer();
   } else if (state.tab === 'tracker-to-brief') {
     renderTrackerToBrief();
+  } else if (state.tab === 'meeting-notes') {
+    renderMeetingNotes();
+  } else if (state.tab === 'weekly-updates') {
+    renderWeeklyUpdates();
   } else {
     renderBriefToTracker();
   }
