@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Strategist Tools — BAD Marketing</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="../pm/styles.css">
+  <link rel="stylesheet" href="styles.css">
+  <!-- SheetJS — parses .xlsx creative trackers in-browser -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <h1>Strategist Tools</h1>
+      <span class="subtitle">BAD Marketing</span>
+    </div>
+    <div class="pm-header-actions">
+      <a href="../sop/index.html" class="btn-secondary btn-small">SOP</a>
+      <a href="../pm/index.html" class="btn-secondary btn-small">PM Tools</a>
+      <a href="../index.html" class="btn-secondary btn-small">← Briefgen</a>
+    </div>
+  </header>
+
+  <nav id="strat-tabs" class="brief-tabs"></nav>
+
+  <main class="form-wrap">
+    <div id="strat-content"></div>
+    <div id="strat-status" role="status" aria-live="polite"></div>
+  </main>
+
+  <footer class="app-footer">
+    <span>Drop creative trackers to generate status columns and update dashboards. Files stay in your browser — nothing uploads.</span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
