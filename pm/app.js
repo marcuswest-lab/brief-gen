@@ -2100,37 +2100,39 @@ function renderTrackerReportTab(cfg) {
 
   wrap.appendChild(card);
 
-  // Result card
+  // Result card — render inline so the PM can select-and-copy directly, or
+  // click "Copy for Google Docs" to put the formatted content on the clipboard.
   if (state[htmlKey]) {
     const resCard = el('div', { class: 'card', style: 'margin-top:16px;' });
     const head = el('div', { class: 'form-row', style: 'align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;' });
     head.appendChild(el('h3', { style: 'margin:0;' }, 'Preview'));
     const headActions = el('div', { class: 'form-row', style: 'gap:8px;' });
+
+    const previewBody = el('div', { class: 'tracker-report-preview' });
+    previewBody.innerHTML = extractBodyHtml(state[htmlKey]);
+
+    headActions.appendChild(el('button', {
+      type: 'button',
+      class: 'btn-primary',
+      onclick: async () => {
+        const ok = await copyHtmlAsRichText(previewBody);
+        flashStatus(ok ? 'Copied — paste into Google Docs' : 'Copy failed', ok ? 'success' : 'error');
+      },
+    }, 'Copy for Google Docs'));
     headActions.appendChild(el('button', {
       type: 'button',
       class: 'btn-secondary',
       onclick: async () => {
         const ok = await copyToClipboard(state[htmlKey]);
-        flashStatus(ok ? 'HTML copied to clipboard' : 'Copy failed', ok ? 'success' : 'error');
+        flashStatus(ok ? 'HTML source copied' : 'Copy failed', ok ? 'success' : 'error');
       },
-    }, 'Copy HTML'));
-    headActions.appendChild(el('button', {
-      type: 'button',
-      class: 'btn-primary',
-      onclick: () => {
-        const blob = new Blob([state[htmlKey]], { type: 'text/html' });
-        saveAs(blob, state[filenameKey] || 'report.html');
-      },
-    }, 'Download .html'));
+    }, 'Copy HTML source'));
     head.appendChild(headActions);
     resCard.appendChild(head);
 
-    const iframe = el('iframe', {
-      class: 'tracker-report-preview',
-      sandbox: 'allow-same-origin',
-    });
-    iframe.srcdoc = state[htmlKey];
-    resCard.appendChild(iframe);
+    resCard.appendChild(el('p', { class: 'muted', style: 'margin:8px 0 12px 0;font-size:13px;' },
+      'Select the content below and copy directly, or click "Copy for Google Docs" to grab the formatted version.'));
+    resCard.appendChild(previewBody);
     wrap.appendChild(resCard);
   }
 
@@ -2199,6 +2201,53 @@ function fmtBytes(n) {
   if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
   if (n > 1024) return (n / 1024).toFixed(1) + ' KB';
   return n + ' B';
+}
+
+/**
+ * Pull the inner HTML of <body> from a full HTML document string so we can
+ * render it inline in the page without dragging in the document-level <style>
+ * (which would bleed into the rest of the app).
+ */
+function extractBodyHtml(fullHtml) {
+  const m = fullHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  return m ? m[1] : fullHtml;
+}
+
+/**
+ * Copy a DOM element's rendered HTML to the clipboard as rich text, so
+ * pasting into Google Docs preserves bullets, links, headings, etc.
+ * Falls back to plain HTML text if the rich-clipboard API is unavailable.
+ */
+async function copyHtmlAsRichText(node) {
+  const html = node.innerHTML;
+  const plain = node.innerText || node.textContent || '';
+  try {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      });
+      await navigator.clipboard.write([item]);
+      return true;
+    }
+  } catch (e) {
+    console.warn('Rich clipboard write failed, trying execCommand fallback:', e);
+  }
+  // Fallback: select the node and execCommand('copy'). Works in older browsers
+  // and Safari when the page is the active document.
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    return ok;
+  } catch (e) {
+    console.warn('execCommand copy fallback failed:', e);
+    return false;
+  }
 }
 
 // -------- Render --------

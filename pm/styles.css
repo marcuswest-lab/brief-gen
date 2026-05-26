@@ -95,11 +95,59 @@
 
 .tracker-report-preview {
   width: 100%;
-  height: 640px;
+  max-height: 640px;
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  margin-top: 12px;
+  padding: 16px 20px;
   background: #fff;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #222;
+  user-select: text;
+}
+
+.tracker-report-preview h2 {
+  font-size: 14pt;
+  margin: 18px 0 4px;
+  color: #1a3d7a;
+  border-bottom: 2px solid #e3e6ef;
+  padding-bottom: 4px;
+}
+
+.tracker-report-preview h3 {
+  font-size: 12pt;
+  margin: 14px 0 4px;
+  color: #444;
+}
+
+.tracker-report-preview ul {
+  margin: 4px 0 10px 1.2em;
+  padding-left: 0;
+}
+
+.tracker-report-preview li {
+  margin: 3px 0;
+  list-style: disc;
+}
+
+.tracker-report-preview a {
+  color: #1a73e8;
+  text-decoration: none;
+}
+
+.tracker-report-preview a:hover {
+  text-decoration: underline;
+}
+
+.tracker-report-preview p {
+  margin: 8px 0 4px;
+}
+
+.tracker-report-preview hr {
+  border: none;
+  border-top: 1px dashed #ccc;
+  margin: 18px 0;
 }
 
 .ad-cat-buttons {
