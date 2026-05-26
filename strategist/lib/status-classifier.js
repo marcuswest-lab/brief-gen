@@ -463,6 +463,33 @@ export function detectClientFromFilename(filename) {
   return null;
 }
 
+/**
+ * Classify a file by role so the Strategist page can show which of the three
+ * dashboard inputs is present:
+ *   - 'new-tracker'  — `[Client X 2.0] - Creative Tracker (N).xlsx`
+ *   - 'old-tracker'  — `[Client] - Creative & Copy Tracking Sheet ...xlsx`
+ *   - 'raw-data'     — `[Client] Raw Data (N).xlsx`
+ *   - 'unknown'      — anything else
+ *
+ * The 2.0 tracker is the only file the in-browser Status classifier reads.
+ * The other two are tracked for the dashboard-regen checklist only.
+ */
+export function detectFileRole(filename) {
+  if (!filename) return 'unknown';
+  const n = filename.toLowerCase();
+  if (/2\.0\].*creative tracker|2\.0[^/\\]*creative tracker/.test(n)) return 'new-tracker';
+  if (/creative\s*&?\s*copy\s*tracking\s*sheet/.test(n)) return 'old-tracker';
+  if (/raw\s*data/.test(n)) return 'raw-data';
+  return 'unknown';
+}
+
+export const FILE_ROLE_LABEL = {
+  'new-tracker': '2.0 Creative Tracker',
+  'old-tracker': 'Old Tracking Sheet',
+  'raw-data':    'Raw Data',
+  'unknown':     'Unrecognized',
+};
+
 // -------- Workbook loader --------
 
 export async function readWorkbookFromFile(file) {
