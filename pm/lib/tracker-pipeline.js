@@ -197,6 +197,17 @@ function isSpanish(rec) {
   return n.startsWith('SP -') || n.startsWith('SP-');
 }
 
+// Dan Henry split: ads are prefixed `MDW` or `PB` to denote which of the
+// two funnels they target. They have very different KPIs ($200 CPA for MDW
+// vs $12 CPR for PB) so the pipeline notes must show them as separate
+// sub-sections per client (mirrors the VAM / NSR split pattern).
+function isDanHenryMdw(rec) {
+  return rec.name.trim().toUpperCase().startsWith('MDW');
+}
+function isDanHenryPb(rec) {
+  return rec.name.trim().toUpperCase().startsWith('PB');
+}
+
 function isLaunched(rec) {
   return rec.launchDt != null || hasValue(rec.launchRaw);
 }
@@ -359,6 +370,18 @@ function buildClientSectionMeeting(clientName, records, now) {
       parts.push(renderLaunchedSection(splitByKind(subLaunched)));
       parts.push(renderPipelines(buildPipeline(subRecs, clientName, filt)));
     }
+  } else if (clientName === 'Dan Henry') {
+    const groups = [
+      ['MDW Funnel', isDanHenryMdw],
+      ['PB Funnel',  isDanHenryPb],
+    ];
+    for (const [subLabel, filt] of groups) {
+      const subLaunched = launched.filter(filt);
+      const subRecs = records.filter(filt);
+      parts.push(`<h3 style="margin-top:18px;color:#444;">${escapeHtml(subLabel)}</h3>`);
+      parts.push(renderLaunchedSection(splitByKind(subLaunched)));
+      parts.push(renderPipelines(buildPipeline(subRecs, clientName, filt)));
+    }
   } else {
     parts.push(renderLaunchedSection(splitByKind(launched)));
     parts.push(renderPipelines(buildPipeline(records, clientName)));
@@ -484,6 +507,13 @@ function buildClientSectionWeekly(clientName, records) {
   if (clientName === 'VAM') {
     parts.push(renderFunnel('VAM Funnel', pipelineRecs.filter(r => !isNsr(r))));
     parts.push(renderFunnel('NSR Funnel', pipelineRecs.filter(isNsr)));
+  } else if (clientName === 'Dan Henry') {
+    // Split by funnel — MDW vs PB. Each has different KPIs and ad inventory.
+    parts.push(renderFunnel('MDW Funnel', pipelineRecs.filter(isDanHenryMdw)));
+    parts.push(renderFunnel('PB Funnel',  pipelineRecs.filter(isDanHenryPb)));
+    // Anything that doesn't start with MDW/PB → fall back to "Other"
+    const other = pipelineRecs.filter(r => !isDanHenryMdw(r) && !isDanHenryPb(r));
+    if (other.length) parts.push(renderFunnel('Other', other));
   } else {
     parts.push(renderFunnel('', pipelineRecs));
   }
