@@ -296,15 +296,37 @@ function renderLaunchedSection(launchedByKind) {
       parts.push(`<li>${label}:<ul><li><em>(none this week)</em></li></ul></li>`);
       continue;
     }
-    items.sort((a, b) => (b.launchDt?.getTime() || 0) - (a.launchDt?.getTime() || 0));
-    const sub = items.map(it => {
-      const name = escapeHtml(it.name);
-      const dateStr = it.launchDt
-        ? ` <span style="color:#888;">(${it.launchDt.getMonth() + 1}/${it.launchDt.getDate()})</span>`
+
+    // Group ads into batches by Idea Name (falls back to ad name if no
+    // idea is set). Sorted by most recent launch date within the batch
+    // so the most recent batch surfaces first.
+    const batches = new Map();
+    for (const it of items) {
+      const key = (it.idea && it.idea.trim()) || it.name;
+      if (!batches.has(key)) batches.set(key, []);
+      batches.get(key).push(it);
+    }
+
+    // Sort batches by the most recent launch date inside each.
+    const sortedBatches = [...batches.entries()].map(([idea, ads]) => {
+      ads.sort((a, b) => (b.launchDt?.getTime() || 0) - (a.launchDt?.getTime() || 0));
+      const mostRecent = ads[0]?.launchDt?.getTime() || 0;
+      const link = ads.find(a => a.folderUrl)?.folderUrl
+        || ads.find(a => a.reqUrl)?.reqUrl
+        || '';
+      return { idea, ads, link, mostRecent };
+    }).sort((a, b) => b.mostRecent - a.mostRecent);
+
+    const sub = sortedBatches.map(({ idea, ads, link }) => {
+      const name = escapeHtml(idea);
+      const countSuffix = ads.length > 1 ? ` (${ads.length} variations)` : '';
+      const launchDt = ads[0]?.launchDt;
+      const dateStr = launchDt
+        ? ` <span style="color:#888;">(${launchDt.getMonth() + 1}/${launchDt.getDate()})</span>`
         : '';
-      return it.folderUrl
-        ? `<li><a href="${escapeHtml(it.folderUrl)}">${name}</a>${dateStr}</li>`
-        : `<li>${name}${dateStr}</li>`;
+      return link
+        ? `<li><a href="${escapeHtml(link)}">${name}</a>${countSuffix}${dateStr}</li>`
+        : `<li>${name}${countSuffix}${dateStr}</li>`;
     }).join('');
     parts.push(`<li>${label}:<ul>${sub}</ul></li>`);
   }
