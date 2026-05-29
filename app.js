@@ -4,6 +4,13 @@ import { TEMPLATES, DROPDOWN_OPTIONS } from './lib/templates-config.js';
 import { generateBrief } from './lib/docx-filler.js';
 import { loadBriefs, upsertBrief, deleteBrief, getBrief, sortBriefsRecent, briefDisplayLabel, buildBriefFilename } from './lib/brief-store.js';
 import { parseClaudeOutput } from './lib/claude-output-parser.js';
+import {
+  docxBlobToHtml,
+  wrapHtmlForPaste,
+  copyHtmlToClipboard,
+  downloadHtmlFile,
+  docxFilenameToHtml,
+} from './lib/html-exporter.js';
 
 const MAX_CREATIVES = 10;
 const STORAGE_KEY = 'pbg.formState.v1';
@@ -1269,48 +1276,65 @@ function validate() {
   return errors;
 }
 
-async function handleGenerate() {
-  const errors = validate();
+/**
+ * Validate + build a filled docx Blob from the current form state. Shared by
+ * `handleGenerate` (downloads the blob) and the HTML export handlers (convert
+ * the blob via mammoth before delivering to the user).
+ *
+ * Returns null if validation fails. Errors are written to the #status div so
+ * the user sees the same feedback regardless of which button they clicked.
+ *
+ * @returns {Promise<null | {blob: Blob, filename: string, overview: object, creatives: object[], briefType: string, client: object}>}
+ */
+async function buildBriefBlob() {
   const status = document.getElementById('status');
   status.className = '';
   status.textContent = '';
 
+  const errors = validate();
   if (errors.length > 0) {
     status.className = 'error';
     status.textContent = errors.join(' • ');
-    return;
+    return null;
   }
 
+  const config = TEMPLATES[state.briefType];
+  const client = getCurrentClient();
+  const ov = state.forms[state.briefType].overview;
+  const creatives = state.forms[state.briefType].creatives;
+
+  const res = await fetch(config.file);
+  if (!res.ok) throw new Error(`Failed to load template: ${res.status}`);
+  const templateBuffer = await res.arrayBuffer();
+
+  const blob = await generateBrief({
+    briefType: state.briefType,
+    clientName: client.name,
+    overview: ov,
+    creatives,
+    templateBuffer,
+  });
+
+  const filename = buildBriefFilename({
+    clientName: client.name,
+    briefType: state.briefType,
+    ideaName: ov['Idea Name'],
+  });
+
+  return { blob, filename, overview: ov, creatives, briefType: state.briefType, client };
+}
+
+async function handleGenerate() {
+  const status = document.getElementById('status');
   const btn = document.getElementById('generate-btn');
   btn.disabled = true;
   btn.textContent = 'Generating…';
 
   try {
-    const config = TEMPLATES[state.briefType];
-    const client = getCurrentClient();
-    const ov = state.forms[state.briefType].overview;
-    const creatives = state.forms[state.briefType].creatives;
+    const built = await buildBriefBlob();
+    if (!built) return; // validation failure already surfaced in #status
 
-    // Fetch the template
-    const res = await fetch(config.file);
-    if (!res.ok) throw new Error(`Failed to load template: ${res.status}`);
-    const templateBuffer = await res.arrayBuffer();
-
-    // Generate
-    const blob = await generateBrief({
-      briefType: state.briefType,
-      clientName: client.name,
-      overview: ov,
-      creatives,
-      templateBuffer,
-    });
-
-    // Filename: "Dan Henry Video Brief | The Script Is the Business | 2026-05-12.docx"
-    const filename = buildBriefFilename({
-      clientName: client.name,
-      briefType: state.briefType,
-      ideaName: ov['Idea Name'],
-    });
+    const { blob, filename, overview: ov, creatives, client } = built;
 
     saveAs(blob, filename);
 
@@ -1341,6 +1365,149 @@ async function handleGenerate() {
     btn.disabled = false;
     btn.textContent = 'Generate Brief';
   }
+}
+
+async function handleCopyHtml() {
+  const status = document.getElementById('status');
+  const btn = document.getElementById('copy-html-btn');
+  btn.disabled = true;
+  btn.textContent = 'Copying…';
+
+  try {
+    const built = await buildBriefBlob();
+    if (!built) return;
+
+    const { blob, filename } = built;
+    const inner = await docxBlobToHtml(blob);
+    const fullHtml = wrapHtmlForPaste(inner, { title: filename });
+    await copyHtmlToClipboard(fullHtml);
+
+    status.className = 'success';
+    status.textContent = '✓ Copied HTML to clipboard. Paste into Google Docs.';
+    setTimeout(() => {
+      if (status.textContent.startsWith('✓ Copied HTML')) {
+        status.className = '';
+        status.textContent = '';
+      }
+    }, 5000);
+  } catch (err) {
+    console.error(err);
+    status.className = 'error';
+    status.textContent = `Error: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Copy HTML';
+  }
+}
+
+async function handlePreviewHtml() {
+  const status = document.getElementById('status');
+  const btn = document.getElementById('preview-html-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating preview…';
+
+  try {
+    const built = await buildBriefBlob();
+    if (!built) return;
+
+    const { blob, filename } = built;
+    const inner = await docxBlobToHtml(blob);
+    const fullHtml = wrapHtmlForPaste(inner, { title: filename });
+
+    openHtmlPreviewModal({ fullHtml, filename });
+  } catch (err) {
+    console.error(err);
+    status.className = 'error';
+    status.textContent = `Error: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Preview HTML';
+  }
+}
+
+/**
+ * Render the HTML preview modal. Uses the existing .modal-* CSS classes.
+ * The preview itself lives in a sandboxed iframe so the inline styles in the
+ * generated HTML cannot leak into the app's chrome.
+ */
+function openHtmlPreviewModal({ fullHtml, filename }) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  // Sandboxed iframe so the pasted styles don't escape into the app.
+  const iframe = el('iframe', {
+    class: 'html-preview-frame',
+    sandbox: 'allow-same-origin',
+    title: 'HTML preview',
+  });
+
+  const copyBtn = el('button', {
+    type: 'button',
+    class: 'btn-primary btn-small',
+    onclick: async () => {
+      try {
+        await copyHtmlToClipboard(fullHtml);
+        copyBtn.textContent = '✓ Copied';
+        setTimeout(() => { copyBtn.textContent = 'Copy to Clipboard'; }, 2000);
+      } catch (err) {
+        console.error(err);
+        copyBtn.textContent = 'Copy failed';
+        setTimeout(() => { copyBtn.textContent = 'Copy to Clipboard'; }, 2000);
+      }
+    },
+  }, 'Copy to Clipboard');
+
+  const downloadBtn = el('button', {
+    type: 'button',
+    class: 'btn-secondary btn-small',
+    onclick: () => {
+      downloadHtmlFile(fullHtml, docxFilenameToHtml(filename));
+    },
+  }, 'Download .html');
+
+  const closeBtn = el('button', {
+    type: 'button',
+    class: 'btn-secondary btn-small',
+    onclick: close,
+  }, 'Close');
+
+  const overlay = el('div', {
+    class: 'modal-overlay',
+    onclick: (e) => { if (e.target === overlay) close(); },
+  },
+    el('div', { class: 'modal-dialog html-preview-dialog' },
+      el('div', { class: 'modal-header' },
+        el('h2', {}, 'HTML Preview'),
+        el('button', { class: 'modal-close', type: 'button', onclick: close, 'aria-label': 'Close' }, '×'),
+      ),
+      el('div', { class: 'modal-body' },
+        el('p', { class: 'modal-hint' },
+          'This is exactly what will be pasted into Google Docs. Click "Copy to Clipboard" and then Cmd+V into a Google Doc.',
+        ),
+        iframe,
+      ),
+      el('div', { class: 'modal-footer html-preview-footer' },
+        downloadBtn,
+        closeBtn,
+        copyBtn,
+      ),
+    ),
+  );
+
+  root.appendChild(overlay);
+
+  // Write the preview HTML after the iframe is in the DOM.
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(fullHtml);
+  doc.close();
 }
 
 function handleClear() {
@@ -1489,6 +1656,8 @@ async function init() {
 
   document.getElementById('generate-btn').addEventListener('click', handleGenerate);
   document.getElementById('clear-btn').addEventListener('click', handleClear);
+  document.getElementById('copy-html-btn').addEventListener('click', handleCopyHtml);
+  document.getElementById('preview-html-btn').addEventListener('click', handlePreviewHtml);
 }
 
 document.addEventListener('DOMContentLoaded', init);
