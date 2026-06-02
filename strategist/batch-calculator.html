@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batch Calculator — Strategist Tools — BAD Marketing</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="../sop/styles.css">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Local styles for the calculator page. Keeps the page self-contained
+       so it can also be deployed standalone on GitHub Pages. */
+    .bc-main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
+    .bc-hero { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+    .bc-hero h2 { margin: 0; font-size: 22px; }
+    .bc-hero p { margin: 0; color: var(--muted, #6b7280); font-size: 14px; }
+
+    .bc-card { background: var(--card-bg, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 12px; padding: 22px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .bc-card h3 { margin: 0 0 14px; font-size: 16px; letter-spacing: 0.01em; }
+    .bc-card h3 .bc-step { display: inline-block; background: #111827; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-right: 8px; vertical-align: middle; }
+
+    .bc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 18px; }
+    .bc-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 18px; }
+    @media (max-width: 720px) { .bc-grid, .bc-grid-3 { grid-template-columns: 1fr; } }
+
+    .bc-field { display: flex; flex-direction: column; gap: 4px; }
+    .bc-field label { font-size: 12px; font-weight: 600; color: #374151; }
+    .bc-field .bc-hint { font-size: 11px; color: #9ca3af; font-weight: 400; }
+    .bc-field input { font-size: 14px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; }
+    .bc-field input:focus { outline: 2px solid #2563eb; outline-offset: -1px; border-color: #2563eb; }
+
+    .bc-results { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 6px; }
+    .bc-result-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e5e7eb; }
+    .bc-result-row:last-child { border-bottom: 0; }
+    .bc-result-row .bc-label { font-size: 13px; color: #4b5563; }
+    .bc-result-row .bc-value { font-size: 15px; font-weight: 600; color: #111827; font-variant-numeric: tabular-nums; }
+
+    .bc-headline { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    @media (max-width: 720px) { .bc-headline { grid-template-columns: 1fr; } }
+    .bc-headline-card { padding: 18px; border-radius: 10px; }
+    .bc-headline-card.current { background: #fef3c7; border: 1px solid #fcd34d; }
+    .bc-headline-card.target  { background: #d1fae5; border: 1px solid #6ee7b7; }
+    .bc-headline-card h4 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .bc-headline-card .bc-big { font-size: 38px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+    .bc-headline-card .bc-sub { font-size: 12px; color: #4b5563; margin-top: 4px; }
+
+    .bc-flags { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .bc-flag { padding: 10px 12px; border-radius: 6px; font-size: 13px; line-height: 1.45; }
+    .bc-flag.warn { background: #fef2f2; border-left: 4px solid #ef4444; color: #7f1d1d; }
+    .bc-flag.ok   { background: #ecfdf5; border-left: 4px solid #10b981; color: #064e3b; }
+
+    .bc-toc { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; font-size: 13px; }
+    .bc-toc strong { display: block; margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; }
+    .bc-toc a { color: #2563eb; margin-right: 14px; text-decoration: none; }
+    .bc-toc a:hover { text-decoration: underline; }
+
+    .bc-formula { background: #0f172a; color: #e2e8f0; padding: 10px 14px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
+    .bc-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+    .bc-table th, .bc-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    .bc-table th { background: #f9fafb; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+    .bc-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .bc-step-list { padding-left: 22px; line-height: 1.6; }
+    .bc-step-list li { margin-bottom: 8px; }
+    .bc-callout { background: #eff6ff; border-left: 4px solid #2563eb; padding: 10px 14px; border-radius: 4px; margin: 12px 0; font-size: 13.5px; line-height: 1.55; }
+    .bc-callout strong { color: #1e3a8a; }
+
+    .bc-share { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .bc-share button { background: #111827; color: #fff; border: 0; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .bc-share button:hover { background: #1f2937; }
+    .bc-share button.secondary { background: #fff; color: #111827; border: 1px solid #d1d5db; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <h1>Batch Calculator</h1>
+      <span class="subtitle">BAD Marketing · Strategist Tools</span>
+    </div>
+    <div class="pm-header-actions">
+      <a href="./index.html" class="btn-secondary btn-small">← Strategist</a>
+      <a href="../sop/index.html" class="btn-secondary btn-small">SOP</a>
+      <a href="../index.html" class="btn-secondary btn-small">Briefgen</a>
+    </div>
+  </header>
+
+  <main class="bc-main">
+
+    <div class="bc-hero">
+      <h2>How many batches per week do we need to scale?</h2>
+      <p>Plug in numbers from the client's creative tracker and scaling ladder. Calculator runs Damien Clark's CIS formulas live. Full step-by-step SOP underneath.</p>
+    </div>
+
+    <nav class="bc-toc">
+      <strong>Jump to</strong>
+      <a href="#calculator">Calculator</a>
+      <a href="#sop">SOP (step by step)</a>
+      <a href="#formulas">Formulas</a>
+      <a href="#example">Worked example</a>
+    </nav>
+
+    <!-- ============================================================
+         CALCULATOR
+         ============================================================ -->
+    <section id="calculator" class="bc-card">
+      <h3><span class="bc-step">Calculator</span> Inputs</h3>
+
+      <div class="bc-grid-3">
+        <div class="bc-field">
+          <label>Account name <span class="bc-hint">(label only)</span></label>
+          <input type="text" id="in-account" placeholder="e.g. Case Source">
+        </div>
+        <div class="bc-field">
+          <label>Calc date</label>
+          <input type="date" id="in-date">
+        </div>
+        <div class="bc-field">
+          <label>Safety margin % <span class="bc-hint">Damien default = 20</span></label>
+          <input type="number" id="in-safety" value="20" min="0" max="100" step="1">
+        </div>
+      </div>
+
+      <h3 style="margin-top:22px;"><span class="bc-step">Static tracker</span> Rows on the Static Creative Tracker tab</h3>
+      <div class="bc-grid-3">
+        <div class="bc-field">
+          <label>Statics launched <span class="bc-hint">Status ≠ "Not Launched"</span></label>
+          <input type="number" id="in-stat-launched" min="0" step="1" placeholder="e.g. 141">
+        </div>
+        <div class="bc-field">
+          <label>Static winners <span class="bc-hint">Status = Winner / Past Winner</span></label>
+          <input type="number" id="in-stat-winners" min="0" step="1" placeholder="e.g. 14">
+        </div>
+        <div class="bc-field">
+          <label>Σ Static winner spend ($) <span class="bc-hint">Sum of Meta col for winners</span></label>
+          <input type="number" id="in-stat-spend" min="0" step="1" placeholder="e.g. 168000">
+        </div>
+      </div>
+
+      <h3 style="margin-top:22px;"><span class="bc-step">Video tracker</span> Rows on the Video Creative Tracker tab</h3>
+      <div class="bc-grid-3">
+        <div class="bc-field">
+          <label>Videos launched</label>
+          <input type="number" id="in-vid-launched" min="0" step="1" placeholder="e.g. 80">
+        </div>
+        <div class="bc-field">
+          <label>Video winners</label>
+          <input type="number" id="in-vid-winners" min="0" step="1" placeholder="e.g. 6">
+        </div>
+        <div class="bc-field">
+          <label>Σ Video winner spend ($)</label>
+          <input type="number" id="in-vid-spend" min="0" step="1" placeholder="e.g. 27600">
+        </div>
+      </div>
+
+      <h3 style="margin-top:22px;"><span class="bc-step">Scaling ladder</span> From the media buyer / pod lead</h3>
+      <div class="bc-grid-3">
+        <div class="bc-field">
+          <label>Current daily spend ($)</label>
+          <input type="number" id="in-current" min="0" step="100" placeholder="e.g. 20000">
+        </div>
+        <div class="bc-field">
+          <label>Target daily spend ($)</label>
+          <input type="number" id="in-target" min="0" step="100" placeholder="e.g. 60000">
+        </div>
+        <div class="bc-field">
+          <label>Days in window</label>
+          <input type="number" id="in-days" min="1" step="1" placeholder="e.g. 16">
+        </div>
+      </div>
+
+      <h3 style="margin-top:22px;"><span class="bc-step">Mix & batch size</span> Production assumptions</h3>
+      <div class="bc-grid">
+        <div class="bc-field">
+          <label>Video mix % <span class="bc-hint">Default 70 (or 80 for video-heavy)</span></label>
+          <input type="number" id="in-video-mix" value="70" min="0" max="100" step="5">
+        </div>
+        <div class="bc-field">
+          <label>Static mix % <span class="bc-hint">Auto = 100 − Video mix</span></label>
+          <input type="number" id="in-static-mix" value="30" min="0" max="100" step="5" disabled>
+        </div>
+        <div class="bc-field">
+          <label>Statics per batch <span class="bc-hint">BAD default = 7</span></label>
+          <input type="number" id="in-stat-batch" value="7" min="1" step="1">
+        </div>
+        <div class="bc-field">
+          <label>Videos per batch <span class="bc-hint">BAD default = 5</span></label>
+          <input type="number" id="in-vid-batch" value="5" min="1" step="1">
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         RESULTS
+         ============================================================ -->
+    <section class="bc-card">
+      <h3>Results</h3>
+
+      <div class="bc-grid">
+        <div class="bc-results">
+          <div class="bc-result-row"><span class="bc-label">Static win rate</span><span class="bc-value" id="r-stat-wr">—</span></div>
+          <div class="bc-result-row"><span class="bc-label">Video win rate</span><span class="bc-value" id="r-vid-wr">—</span></div>
+          <div class="bc-result-row"><span class="bc-label">Blended win rate</span><span class="bc-value" id="r-blend-wr">—</span></div>
+          <div class="bc-result-row"><span class="bc-label">Avg lifetime spend / winner</span><span class="bc-value" id="r-avg-spend">—</span></div>
+        </div>
+        <div class="bc-results">
+          <div class="bc-result-row"><span class="bc-label">Total spend over window</span><span class="bc-value" id="r-total-spend">—</span></div>
+          <div class="bc-result-row"><span class="bc-label">Spend gap (vs baseline)</span><span class="bc-value" id="r-spend-gap">—</span></div>
+          <div class="bc-result-row"><span class="bc-label">Winners needed (w/ safety)</span><span class="bc-value" id="r-winners">—</span></div>
+          <div class="bc-result-row"><span class="bc-label">Total creatives to produce</span><span class="bc-value" id="r-creatives">—</span></div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:18px;">Batches per week — your real number</h3>
+      <div class="bc-headline">
+        <div class="bc-headline-card current">
+          <h4>At current metrics</h4>
+          <div class="bc-big" id="r-batches-current">—</div>
+          <div class="bc-sub" id="r-batches-current-sub">Plug in inputs above</div>
+        </div>
+        <div class="bc-headline-card target">
+          <h4>If you hit Damien targets <span class="bc-hint">(15% win rate, $30K spend/winner)</span></h4>
+          <div class="bc-big" id="r-batches-target">—</div>
+          <div class="bc-sub" id="r-batches-target-sub">15% blended win rate · $30K avg winner spend</div>
+        </div>
+      </div>
+
+      <div class="bc-flags" id="r-flags"></div>
+
+      <div class="bc-share">
+        <button id="btn-copy">Copy summary for Slack</button>
+        <button id="btn-reset" class="secondary">Reset</button>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SOP
+         ============================================================ -->
+    <section id="sop" class="bc-card">
+      <h3>SOP — Step by step</h3>
+      <p class="muted" style="margin-top:0;">Use this guide the first 2–3 times. After that the calculator above does the work — you just need to know what numbers to pull.</p>
+
+      <h4 style="margin-top:18px;">Step 1 — Open the client's creative tracker</h4>
+      <ol class="bc-step-list">
+        <li>Go to the client's folder (<code>/Case Source/</code>, <code>/VAM/</code>, <code>/CEO Lawyer/</code>, etc.).</li>
+        <li>Open the <strong>most recent</strong> <code>[CLIENT] - Creative Tracker.xlsx</code> (sort by date modified).</li>
+        <li>You'll use two tabs: <strong>Static Creative Tracker</strong> and <strong>Video Creative Tracker</strong>.</li>
+      </ol>
+
+      <h4>Step 2 — Count "launched" statics</h4>
+      <ol class="bc-step-list">
+        <li>On the <strong>Static Creative Tracker</strong> tab, look at column <strong>Status</strong> (usually column E).</li>
+        <li><strong>Launched</strong> = rows where Status is any of: <code>Winner</code>, <code>Loser</code>, <code>Testing</code>, <code>On the fence</code>, <code>Past Winner - Fatigued</code>.</li>
+        <li>Skip rows where Status = <code>Not Launched</code> or is blank.</li>
+      </ol>
+      <div class="bc-formula">=COUNTIFS(E:E,"Winner") + COUNTIFS(E:E,"Loser") + COUNTIFS(E:E,"Testing") + COUNTIFS(E:E,"On the fence") + COUNTIFS(E:E,"Past Winner - Fatigued")</div>
+
+      <h4>Step 3 — Count static winners</h4>
+      <ol class="bc-step-list">
+        <li>Winners = rows where Status = <code>Winner</code> OR <code>Past Winner - Fatigued</code>.</li>
+      </ol>
+      <div class="bc-formula">=COUNTIFS(E:E,"Winner") + COUNTIFS(E:E,"Past Winner - Fatigued")</div>
+
+      <h4>Step 4 — Sum static winner lifetime spend</h4>
+      <ol class="bc-step-list">
+        <li>Column <strong>Meta</strong> (usually column O) is lifetime ad spend per creative.</li>
+        <li>Sum the Meta spend only for rows where Status = Winner or Past Winner - Fatigued.</li>
+      </ol>
+      <div class="bc-formula">=SUMIFS(O:O, E:E, "Winner") + SUMIFS(O:O, E:E, "Past Winner - Fatigued")</div>
+
+      <h4>Step 5 — Repeat for videos</h4>
+      <p>Switch to the <strong>Video Creative Tracker</strong> tab and do the same three counts. Column letters are the same on both tabs.</p>
+
+      <h4>Step 6 — Get the scaling ladder</h4>
+      <ol class="bc-step-list">
+        <li>Ask the media buyer for: <strong>current daily spend</strong>, <strong>target daily spend</strong>, <strong>end date</strong>.</li>
+        <li>Count days from today to the end date → <strong>Days in window</strong>.</li>
+      </ol>
+
+      <h4>Step 7 — Plug everything into the calculator above ⬆️</h4>
+      <p>The calculator does Steps 8–11 of the SOP automatically. Read the <strong>"Batches per week"</strong> headline and the flag banners below it.</p>
+
+      <h4>Step 8 — Sanity check before you report</h4>
+      <table class="bc-table">
+        <thead><tr><th>Check</th><th>If TRUE</th><th>If FALSE</th></tr></thead>
+        <tbody>
+          <tr><td>Batches/week ≤ 6</td><td>Report it.</td><td>Go to next check.</td></tr>
+          <tr><td>Avg Lifetime Spend ≥ $20K</td><td>Number is real.</td><td>Flag: <em>"Lifetime spend per winner is $X — media buying is the bottleneck."</em></td></tr>
+          <tr><td>Blended Win Rate ≥ 10%</td><td>Number is real.</td><td>Flag: <em>"Win rate is X% — concepts need fixing before scaling volume."</em></td></tr>
+        </tbody>
+      </table>
+      <div class="bc-callout">If the math demands &gt;6 batches/week, one of the two levers (win rate or lifetime spend per winner) is broken. The pod needs to know that <strong>before</strong> the creative team gets asked to produce more.</div>
+
+      <h4>Step 9 — Log it</h4>
+      <p>Click <strong>"Copy summary for Slack"</strong> on the calculator and paste it into the pod channel. Also drop the row into the master log spreadsheet so we track every account every week.</p>
+    </section>
+
+    <!-- ============================================================
+         FORMULAS
+         ============================================================ -->
+    <section id="formulas" class="bc-card">
+      <h3>The formulas (Damien's CIS calculator, distilled)</h3>
+
+      <p><strong>Win rates</strong></p>
+      <div class="bc-formula">Static Win Rate  = Static Winners  ÷ Statics Launched
+Video Win Rate   = Video Winners   ÷ Videos Launched
+Blended Win Rate = (Static Winners + Video Winners) ÷ (Statics Launched + Videos Launched)</div>
+
+      <p style="margin-top:14px;"><strong>Avg lifetime spend per winner</strong></p>
+      <div class="bc-formula">Avg Spend = (Σ Static winner spend + Σ Video winner spend) ÷ (Static Winners + Video Winners)</div>
+
+      <p style="margin-top:14px;"><strong>Spend over the scaling window</strong></p>
+      <div class="bc-formula">Total Spend = ((Current Daily + Target Daily) ÷ 2) × Days In Window   ← linear ladder
+Spend Gap   = Total Spend − (Current Daily × Days In Window)         ← incremental spend only</div>
+
+      <p style="margin-top:14px;"><strong>Winners → creatives → batches</strong></p>
+      <div class="bc-formula">Winners Needed     = (Spend Gap ÷ Avg Spend) × (1 + safety margin)
+Video Winners      = Winners Needed × Video Mix %
+Static Winners     = Winners Needed × Static Mix %
+Videos To Produce  = Video Winners  ÷ Video Win Rate
+Statics To Produce = Static Winners ÷ Static Win Rate
+
+Static Batches/Week = Statics To Produce ÷ (Days ÷ 7) ÷ Statics per batch
+Video Batches/Week  = Videos To Produce  ÷ (Days ÷ 7) ÷ Videos per batch
+Total Batches/Week  = Static Batches/Week + Video Batches/Week</div>
+
+      <div class="bc-callout">
+        <strong>Two levers, everything else is noise.</strong> Damien's video is explicit about this. If win rate is below 10% or avg lifetime spend per winner is below $20K, the volume number explodes. Fix the lever first. Doubling win rate halves the creative you need. Pushing avg winner spend from $8K to $30K cuts it by ~75%.
+      </div>
+    </section>
+
+    <!-- ============================================================
+         EXAMPLE
+         ============================================================ -->
+    <section id="example" class="bc-card">
+      <h3>Worked example — Case Source (May 30 → Jun 15)</h3>
+      <table class="bc-table">
+        <thead><tr><th>Input</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Statics launched / winners</td><td class="num">141 / 14</td></tr>
+          <tr><td>Videos launched / winners</td><td class="num">80 / 6</td></tr>
+          <tr><td>Static win rate</td><td class="num">9.93 %</td></tr>
+          <tr><td>Video win rate</td><td class="num">7.50 %</td></tr>
+          <tr><td>Avg lifetime spend / winner</td><td class="num">$8,204</td></tr>
+          <tr><td>Current daily / Target daily</td><td class="num">$20,000 / $60,000</td></tr>
+          <tr><td>Days in window</td><td class="num">16</td></tr>
+          <tr><td>Total spend (linear)</td><td class="num">$640,000</td></tr>
+          <tr><td>Spend gap</td><td class="num">$320,000</td></tr>
+        </tbody>
+      </table>
+
+      <h4 style="margin-top:14px;">At current metrics</h4>
+      <table class="bc-table">
+        <tbody>
+          <tr><td>Winners needed = ($320K ÷ $8,204) × 1.2</td><td class="num">≈ 47</td></tr>
+          <tr><td>Videos to produce = (47 × 0.7) ÷ 0.075</td><td class="num">≈ 440</td></tr>
+          <tr><td>Statics to produce = (47 × 0.3) ÷ 0.099</td><td class="num">≈ 141</td></tr>
+          <tr><td><strong>Batches per week</strong></td><td class="num"><strong>≈ 47 ❌</strong></td></tr>
+        </tbody>
+      </table>
+
+      <h4 style="margin-top:14px;">At Damien target metrics (15% win rate, $30K spend/winner)</h4>
+      <table class="bc-table">
+        <tbody>
+          <tr><td>Winners needed = ($320K ÷ $30K) × 1.2</td><td class="num">≈ 13</td></tr>
+          <tr><td>Creatives needed = 13 ÷ 0.15</td><td class="num">≈ 87</td></tr>
+          <tr><td><strong>Batches per week</strong></td><td class="num"><strong>≈ 5 ✅</strong></td></tr>
+        </tbody>
+      </table>
+
+      <div class="bc-callout">
+        <strong>Report to pod:</strong> "Case Source needs 5 batches/week (3 video + 2 static) <em>assuming</em> media buying gets winner lifetime spend up to $30K. At current $8K lifetime spend, the math demands 47 batches/week — not producible. <strong>The bottleneck is media buying, not creative.</strong>"
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span>Calculator runs entirely in your browser. Nothing is uploaded. Source material: Damien Clark — "Here's Exactly How Much Creative You Need" + Case Source Projections call (May 14, 2026).</span>
+  </footer>
+
+  <script>
+    // ----------------------------------------------------------------
+    // State + persistence
+    // ----------------------------------------------------------------
+    const STORAGE_KEY = 'bc.calc.state.v1';
+    const FIELDS = [
+      'in-account','in-date','in-safety',
+      'in-stat-launched','in-stat-winners','in-stat-spend',
+      'in-vid-launched','in-vid-winners','in-vid-spend',
+      'in-current','in-target','in-days',
+      'in-video-mix','in-stat-batch','in-vid-batch',
+    ];
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        for (const id of FIELDS) {
+          if (saved[id] != null) document.getElementById(id).value = saved[id];
+        }
+      } catch (e) {}
+    }
+    function saveState() {
+      const out = {};
+      for (const id of FIELDS) out[id] = document.getElementById(id).value;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(out)); } catch (e) {}
+    }
+
+    // ----------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------
+    function num(id) {
+      const v = parseFloat(document.getElementById(id).value);
+      return isFinite(v) ? v : 0;
+    }
+    function fmtPct(v)   { return isFinite(v) ? (v * 100).toFixed(2) + ' %' : '—'; }
+    function fmtMoney(v) { return isFinite(v) ? '$' + Math.round(v).toLocaleString() : '—'; }
+    function fmtInt(v)   { return isFinite(v) ? Math.ceil(v).toLocaleString() : '—'; }
+
+    // ----------------------------------------------------------------
+    // The actual calc
+    // ----------------------------------------------------------------
+    function compute() {
+      const statLaunched = num('in-stat-launched');
+      const statWinners  = num('in-stat-winners');
+      const statSpend    = num('in-stat-spend');
+      const vidLaunched  = num('in-vid-launched');
+      const vidWinners   = num('in-vid-winners');
+      const vidSpend     = num('in-vid-spend');
+
+      const current = num('in-current');
+      const target  = num('in-target');
+      const days    = num('in-days');
+      const safety  = num('in-safety') / 100;
+      let videoMix  = num('in-video-mix') / 100;
+      if (videoMix > 1) videoMix = 1;
+      if (videoMix < 0) videoMix = 0;
+      const staticMix = 1 - videoMix;
+      document.getElementById('in-static-mix').value = Math.round(staticMix * 100);
+
+      const statBatch = Math.max(1, num('in-stat-batch'));
+      const vidBatch  = Math.max(1, num('in-vid-batch'));
+
+      // Win rates
+      const statWR  = statLaunched > 0 ? statWinners / statLaunched : NaN;
+      const vidWR   = vidLaunched > 0 ? vidWinners / vidLaunched : NaN;
+      const blendWR = (statLaunched + vidLaunched) > 0
+        ? (statWinners + vidWinners) / (statLaunched + vidLaunched)
+        : NaN;
+
+      // Avg lifetime spend / winner (blended)
+      const totalWinners = statWinners + vidWinners;
+      const avgSpend = totalWinners > 0 ? (statSpend + vidSpend) / totalWinners : NaN;
+
+      // Spend window
+      const totalSpend = days > 0 && current >= 0 && target >= 0
+        ? ((current + target) / 2) * days
+        : NaN;
+      const spendGap = isFinite(totalSpend) ? totalSpend - (current * days) : NaN;
+
+      // Damien's formulas — current metrics
+      let resultsCurrent = null;
+      if (isFinite(spendGap) && spendGap > 0 && isFinite(avgSpend) && avgSpend > 0
+          && isFinite(statWR) && statWR > 0 && isFinite(vidWR) && vidWR > 0) {
+        const winnersNeeded = (spendGap / avgSpend) * (1 + safety);
+        const vidWinnersNeeded  = winnersNeeded * videoMix;
+        const statWinnersNeeded = winnersNeeded * staticMix;
+        const videosToProduce  = vidWinnersNeeded / vidWR;
+        const staticsToProduce = statWinnersNeeded / statWR;
+        const weeks = days / 7;
+        const vidBatches  = videosToProduce  / weeks / vidBatch;
+        const statBatches = staticsToProduce / weeks / statBatch;
+        resultsCurrent = {
+          winnersNeeded,
+          videosToProduce, staticsToProduce,
+          totalCreatives: videosToProduce + staticsToProduce,
+          vidBatches, statBatches,
+          totalBatches: vidBatches + statBatches,
+        };
+      }
+
+      // Damien target — 15% blended win rate, $30K avg winner spend
+      let resultsTarget = null;
+      if (isFinite(spendGap) && spendGap > 0) {
+        const tgtAvgSpend = 30000;
+        const tgtWinRate  = 0.15;
+        const winnersNeeded = (spendGap / tgtAvgSpend) * (1 + safety);
+        const totalCreatives = winnersNeeded / tgtWinRate;
+        const weeks = days / 7;
+        // Treat target as blended for batch sizing (same average batch size)
+        const avgBatch = (statBatch + vidBatch) / 2;
+        const totalBatches = totalCreatives / weeks / avgBatch;
+        resultsTarget = {
+          winnersNeeded,
+          totalCreatives,
+          totalBatches,
+        };
+      }
+
+      // ----- Render results -----
+      document.getElementById('r-stat-wr').textContent   = fmtPct(statWR);
+      document.getElementById('r-vid-wr').textContent    = fmtPct(vidWR);
+      document.getElementById('r-blend-wr').textContent  = fmtPct(blendWR);
+      document.getElementById('r-avg-spend').textContent = fmtMoney(avgSpend);
+      document.getElementById('r-total-spend').textContent = fmtMoney(totalSpend);
+      document.getElementById('r-spend-gap').textContent   = fmtMoney(spendGap);
+      document.getElementById('r-winners').textContent   = resultsCurrent ? fmtInt(resultsCurrent.winnersNeeded) : '—';
+      document.getElementById('r-creatives').textContent = resultsCurrent ? fmtInt(resultsCurrent.totalCreatives) : '—';
+
+      if (resultsCurrent) {
+        document.getElementById('r-batches-current').textContent = fmtInt(resultsCurrent.totalBatches);
+        document.getElementById('r-batches-current-sub').textContent =
+          `${fmtInt(resultsCurrent.statBatches)} static + ${fmtInt(resultsCurrent.vidBatches)} video batches/wk`;
+      } else {
+        document.getElementById('r-batches-current').textContent = '—';
+        document.getElementById('r-batches-current-sub').textContent = 'Plug in inputs above';
+      }
+      if (resultsTarget) {
+        document.getElementById('r-batches-target').textContent = fmtInt(resultsTarget.totalBatches);
+        document.getElementById('r-batches-target-sub').textContent =
+          `${fmtInt(resultsTarget.winnersNeeded)} winners · ${fmtInt(resultsTarget.totalCreatives)} creatives total`;
+      } else {
+        document.getElementById('r-batches-target').textContent = '—';
+      }
+
+      // ----- Flags -----
+      const flagsBox = document.getElementById('r-flags');
+      flagsBox.innerHTML = '';
+      const flags = [];
+      if (isFinite(avgSpend) && avgSpend > 0) {
+        if (avgSpend < 20000) {
+          flags.push({ kind: 'warn',
+            html: `⚠️ <strong>Avg lifetime spend per winner is ${fmtMoney(avgSpend)}</strong> — below the $20K threshold. Media buying is starving winners of spend. Fix ad-set budgets BEFORE asking for more batches.`});
+        } else {
+          flags.push({ kind: 'ok',
+            html: `✅ Avg lifetime spend per winner is ${fmtMoney(avgSpend)} — healthy.`});
+        }
+      }
+      if (isFinite(blendWR) && blendWR > 0) {
+        if (blendWR < 0.10) {
+          flags.push({ kind: 'warn',
+            html: `⚠️ <strong>Blended win rate is ${fmtPct(blendWR)}</strong> — below the 10% floor. Concepts / iterations need work before scaling creative volume.`});
+        } else {
+          flags.push({ kind: 'ok',
+            html: `✅ Blended win rate is ${fmtPct(blendWR)} — at or above the 10% floor.`});
+        }
+      }
+      if (resultsCurrent && resultsCurrent.totalBatches > 6) {
+        flags.push({ kind: 'warn',
+          html: `⚠️ <strong>Current metrics demand ${fmtInt(resultsCurrent.totalBatches)} batches/week.</strong> That's not producible — one of the two levers above is broken. Report BOTH the current number and the Damien-target number to the pod.`});
+      }
+      for (const f of flags) {
+        const div = document.createElement('div');
+        div.className = 'bc-flag ' + f.kind;
+        div.innerHTML = f.html;
+        flagsBox.appendChild(div);
+      }
+
+      saveState();
+    }
+
+    // ----------------------------------------------------------------
+    // Copy summary
+    // ----------------------------------------------------------------
+    function copySummary() {
+      const account = document.getElementById('in-account').value || '(unnamed)';
+      const date    = document.getElementById('in-date').value || new Date().toISOString().slice(0,10);
+      const cur = document.getElementById('r-batches-current').textContent;
+      const tgt = document.getElementById('r-batches-target').textContent;
+      const wr  = document.getElementById('r-blend-wr').textContent;
+      const avg = document.getElementById('r-avg-spend').textContent;
+      const gap = document.getElementById('r-spend-gap').textContent;
+      const summary = [
+        `*Batch calculation — ${account} — ${date}*`,
+        ``,
+        `• Blended win rate: *${wr}*`,
+        `• Avg lifetime spend / winner: *${avg}*`,
+        `• Spend gap over window: *${gap}*`,
+        ``,
+        `*Batches / week at current metrics:* ${cur}`,
+        `*Batches / week if we hit Damien targets (15% WR, $30K spend/winner):* ${tgt}`,
+      ].join('\n');
+      navigator.clipboard.writeText(summary).then(() => {
+        const btn = document.getElementById('btn-copy');
+        const old = btn.textContent;
+        btn.textContent = 'Copied ✓';
+        setTimeout(() => { btn.textContent = old; }, 1500);
+      });
+    }
+
+    // ----------------------------------------------------------------
+    // Wire up
+    // ----------------------------------------------------------------
+    function init() {
+      // Default the date input to today.
+      const today = new Date().toISOString().slice(0,10);
+      document.getElementById('in-date').value = today;
+
+      loadState();
+
+      for (const id of FIELDS) {
+        document.getElementById(id).addEventListener('input', compute);
+        document.getElementById(id).addEventListener('change', compute);
+      }
+      document.getElementById('btn-copy').addEventListener('click', copySummary);
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        if (!confirm('Reset all inputs?')) return;
+        localStorage.removeItem(STORAGE_KEY);
+        for (const id of FIELDS) {
+          const el = document.getElementById(id);
+          if (id === 'in-safety') el.value = '20';
+          else if (id === 'in-video-mix') el.value = '70';
+          else if (id === 'in-static-mix') el.value = '30';
+          else if (id === 'in-stat-batch') el.value = '7';
+          else if (id === 'in-vid-batch') el.value = '5';
+          else if (id === 'in-date') el.value = today;
+          else el.value = '';
+        }
+        compute();
+      });
+      compute();
+    }
+    init();
+  </script>
+</body>
+</html>
