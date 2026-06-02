@@ -123,8 +123,9 @@ function renderTabs() {
   const wrap = document.getElementById('strat-tabs');
   wrap.innerHTML = '';
   const tabs = [
-    { id: 'status', label: '🎯 Status & Dashboards' },
-    { id: 'rules',  label: '📋 KPI Rules' },
+    { id: 'status',     label: '🎯 Status & Dashboards' },
+    { id: 'rules',      label: '📋 KPI Rules' },
+    { id: 'batch-calc', label: '📊 Batch Calculator' },
   ];
   for (const t of tabs) {
     wrap.appendChild(el('button', {
@@ -804,10 +805,37 @@ function numericField({ label, prefix, suffix, value, step, hint, onCommit }) {
 
 // -------- Render --------
 
+// -------- Batch Calculator tab --------
+//
+// The Batch Calculator is a fully self-contained page at
+// strategist/batch-calculator.html. We embed it as an iframe so the
+// calculator can also be deployed standalone (e.g. linked from Slack)
+// without any state-machine coupling to the strategist app.
+
+function renderBatchCalcTab() {
+  const wrap = document.getElementById('strat-content');
+  wrap.innerHTML = '';
+  const card = el('div', { class: 'card', style: 'padding:0; overflow:hidden;' });
+  const frame = el('iframe', {
+    src: './batch-calculator.html',
+    title: 'Batch Calculator',
+    style: 'width:100%; height:calc(100vh - 220px); min-height:700px; border:0; display:block;',
+    loading: 'lazy',
+  });
+  card.appendChild(frame);
+  wrap.appendChild(card);
+  const openLink = el('p', { class: 'muted', style: 'margin:8px 4px; font-size:12px;' },
+    'Tip: ',
+    el('a', { href: './batch-calculator.html', target: '_blank', rel: 'noopener' },
+      'open the calculator full-screen ↗'));
+  wrap.appendChild(openLink);
+}
+
 function renderAll() {
   renderTabs();
-  if (state.tab === 'rules') renderRulesTab();
-  else renderStatusTab();
+  if (state.tab === 'rules')           renderRulesTab();
+  else if (state.tab === 'batch-calc') renderBatchCalcTab();
+  else                                 renderStatusTab();
 }
 
 function init() {
