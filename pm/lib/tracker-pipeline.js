@@ -217,28 +217,40 @@ function isPipelineStatus(rec) {
   return s === '' || s === 'not launched';
 }
 
+// As of June 2026 a single Request Doc can hold MANY batches, so the pipeline
+// can't be keyed on the Request Doc alone — that collapses distinct batches
+// into one line. We combine the Request Doc ("request stack") with the actual
+// batch name. The batch name lives in the Folder Link display text
+// (e.g. "Qualification Check | Batch 2"); rows that don't have a folder yet
+// (production) fall back to the creative-name concept prefix.
+function conceptPrefix(name) {
+  return String(name || '').split(' - ')[0].trim();
+}
+
+function batchName(rec) {
+  if (hasValue(rec.folderText) && !/^0+\s*-\s*copy submission/i.test(rec.folderText)) {
+    return rec.folderText;
+  }
+  return conceptPrefix(rec.name) || rec.name;
+}
+
+function batchKey(rec) {
+  const stack = stripQuery(rec.reqUrl) || rec.reqText || '';
+  return `${stack}||${batchName(rec)}`;
+}
+
 // -------- Meeting Notes (Launched + Testing + Production) --------
 
 function groupByBatch(items) {
   const batches = new Map();
   for (const it of items) {
-    let key, label, link;
-    if (it.reqUrl) {
-      key = stripQuery(it.reqUrl) || it.reqUrl;
-      label = it.reqText || it.reqUrl;
-      link = it.reqUrl;
-    } else if (it.reqText && !['-', '--', 'N/A', 'n/a'].includes(it.reqText)) {
-      key = it.reqText; label = it.reqText; link = null;
-    } else if (it.folderUrl) {
-      key = it.folderUrl; label = it.folderText || it.folderUrl; link = null;
-    } else {
-      key = it.name; label = it.name; link = null;
-    }
-    if (!batches.has(key)) batches.set(key, { label, url: link, folders: [] });
+    const key = batchKey(it);
+    if (!batches.has(key)) batches.set(key, { label: batchName(it), url: it.reqUrl || null, folders: [] });
+    const b = batches.get(key);
+    if (!b.url && it.reqUrl) b.url = it.reqUrl;
     if (it.folderUrl) {
       const entry = [it.folderText || it.folderUrl, it.folderUrl];
-      const existing = batches.get(key).folders;
-      if (!existing.some(([t, u]) => t === entry[0] && u === entry[1])) existing.push(entry);
+      if (!b.folders.some(([t, u]) => t === entry[0] && u === entry[1])) b.folders.push(entry);
     }
   }
   return batches;
@@ -297,28 +309,29 @@ function renderLaunchedSection(launchedByKind) {
       continue;
     }
 
-    // Group ads into batches by Idea Name (falls back to ad name if no
-    // idea is set). Sorted by most recent launch date within the batch
-    // so the most recent batch surfaces first.
+    // Group ads into batches by the combined Request Doc + batch name (the
+    // Folder Link display text, falling back to the creative-name concept).
+    // Sorted by most recent launch date within the batch so the most recent
+    // batch surfaces first.
     const batches = new Map();
     for (const it of items) {
-      const key = (it.idea && it.idea.trim()) || it.name;
-      if (!batches.has(key)) batches.set(key, []);
-      batches.get(key).push(it);
+      const key = batchKey(it);
+      if (!batches.has(key)) batches.set(key, { label: batchName(it), ads: [] });
+      batches.get(key).ads.push(it);
     }
 
     // Sort batches by the most recent launch date inside each.
-    const sortedBatches = [...batches.entries()].map(([idea, ads]) => {
+    const sortedBatches = [...batches.values()].map(({ label, ads }) => {
       ads.sort((a, b) => (b.launchDt?.getTime() || 0) - (a.launchDt?.getTime() || 0));
       const mostRecent = ads[0]?.launchDt?.getTime() || 0;
-      const link = ads.find(a => a.folderUrl)?.folderUrl
-        || ads.find(a => a.reqUrl)?.reqUrl
+      const link = ads.find(a => a.reqUrl)?.reqUrl
+        || ads.find(a => a.folderUrl)?.folderUrl
         || '';
-      return { idea, ads, link, mostRecent };
+      return { label, ads, link, mostRecent };
     }).sort((a, b) => b.mostRecent - a.mostRecent);
 
-    const sub = sortedBatches.map(({ idea, ads, link }) => {
-      const name = escapeHtml(idea);
+    const sub = sortedBatches.map(({ label, ads, link }) => {
+      const name = escapeHtml(label);
       const countSuffix = ads.length > 1 ? ` (${ads.length} variations)` : '';
       const launchDt = ads[0]?.launchDt;
       const dateStr = launchDt
@@ -476,18 +489,18 @@ function stage(rec) {
 function groupByIdea(records) {
   const buckets = new Map();
   for (const r of records) {
-    const key = r.idea || r.name;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(r);
+    const key = batchKey(r);
+    if (!buckets.has(key)) buckets.set(key, { label: batchName(r), items: [] });
+    buckets.get(key).items.push(r);
   }
   const out = [];
-  for (const [key, items] of buckets.entries()) {
+  for (const { label, items } of buckets.values()) {
     const link = items.find(i => i.folderUrl)?.folderUrl
       || items.find(i => i.reqUrl)?.reqUrl
       || items.find(i => i.folderText)?.folderText
       || items.find(i => i.reqText)?.reqText
       || '';
-    out.push({ idea: key, count: items.length, link });
+    out.push({ idea: label, count: items.length, link });
   }
   return out;
 }
