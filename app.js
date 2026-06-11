@@ -182,6 +182,41 @@ function applyClientDefaults() {
   }
 }
 
+// Fields that are client-specific and should re-fill when the client changes.
+const CLIENT_AUTOFILL_FIELDS = ['Link to Brand Assets', 'Landing Page URL'];
+
+// All known default values any client defines for a field (used to detect
+// auto-filled vs. manually-edited values).
+function allClientDefaultValues(field) {
+  const vals = new Set();
+  for (const c of state.clients) {
+    const v = c.defaults && c.defaults[field];
+    if (v != null && v !== '') vals.add(v);
+  }
+  return vals;
+}
+
+// When the client changes, overwrite client-specific fields with the new
+// client's value — but only if the current value looks auto-filled (empty or
+// equal to some client's known default). Never clobber a value the user typed.
+function applyClientSwitch() {
+  const client = getCurrentClient();
+  for (const briefType of Object.keys(state.forms)) {
+    const config = TEMPLATES[briefType];
+    const ov = state.forms[briefType].overview;
+    for (const field of CLIENT_AUTOFILL_FIELDS) {
+      // Skip fields this brief type doesn't have.
+      if (!config.overview.some(d => d.field === field)) continue;
+      const cur = ov[field];
+      const knownDefaults = allClientDefaultValues(field);
+      const isAutoFilled = cur == null || cur === '' || knownDefaults.has(cur);
+      if (!isAutoFilled) continue; // user edited this — leave it alone
+      const next = client && client.defaults ? client.defaults[field] : undefined;
+      ov[field] = next != null ? next : '';
+    }
+  }
+}
+
 // -------- Rendering --------
 
 function el(tag, props = {}, ...children) {
@@ -213,6 +248,7 @@ function renderClientPicker() {
     id: 'client-select',
     onchange: (e) => {
       state.clientId = e.target.value;
+      applyClientSwitch();
       applyClientDefaults();
       saveState();
       renderClientPicker();
@@ -379,6 +415,8 @@ function handleAddClient() {
   if (trackerUrl.trim()) newClient.tracker_url = trackerUrl.trim();
   state.clients.push(newClient);
   state.clientId = id;
+  applyClientSwitch();
+  applyClientDefaults();
   saveLocalClients();
   saveState();
   renderClientPicker();
@@ -433,6 +471,7 @@ function handleManageClients() {
           // If this was the selected client, fall back to the first available
           if (state.clientId === client.id) {
             state.clientId = state.clients[0]?.id || null;
+            applyClientSwitch();
             applyClientDefaults();
           }
           saveLocalClients();
@@ -459,6 +498,7 @@ function handleManageClients() {
             if (idx >= 0) state.clients.splice(idx, 1);
             if (state.clientId === dupe.id) {
               state.clientId = state.clients[0]?.id || null;
+              applyClientSwitch();
               applyClientDefaults();
             }
           }
