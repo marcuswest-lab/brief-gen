@@ -1378,11 +1378,15 @@ async function buildBriefBlob() {
   if (!res.ok) throw new Error(`Failed to load template: ${res.status}`);
   const templateBuffer = await res.arrayBuffer();
 
+  // File names are assigned later (via the tracker / PM tools), so the
+  // generated doc always leaves the per-creative File Name blank.
+  const creativesForDoc = creatives.map(c => ({ ...c, 'File Name': '' }));
+
   const blob = await generateBrief({
     briefType: state.briefType,
     clientName: client.name,
     overview: ov,
-    creatives,
+    creatives: creativesForDoc,
     templateBuffer,
   });
 
@@ -1442,7 +1446,7 @@ async function handleGenerate() {
     status.textContent = `Error: ${err.message}`;
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Generate Brief';
+    btn.textContent = 'Generate Docx';
   }
 }
 
