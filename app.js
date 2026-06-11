@@ -1324,6 +1324,30 @@ async function buildBriefBlob() {
   return { blob, filename, overview: ov, creatives, briefType: state.briefType, client };
 }
 
+/**
+ * Persist a built brief into the shared store. If we were editing a loaded
+ * brief, update it in place; otherwise create a new record. Shared by
+ * `handleGenerate` and `handlePreviewHtml` so both persist to "My Briefs".
+ */
+function saveBuiltBrief(built) {
+  const { overview: ov, creatives, client } = built;
+  const form = state.forms[state.briefType];
+  const stored = upsertBrief({
+    id: form.loadedBriefId || undefined,
+    clientId: client.id,
+    clientName: client.name,
+    briefType: state.briefType,
+    ideaName: ov['Idea Name'] || '',
+    angleName: ov['Angle Name'] || '',
+    overview: { ...ov },
+    creatives: creatives.map(c => ({ ...c })),
+  });
+  form.loadedBriefId = stored.id;
+  saveState();
+  renderClientPicker();
+  return stored;
+}
+
 async function handleGenerate() {
   const status = document.getElementById('status');
   const btn = document.getElementById('generate-btn');
@@ -1334,26 +1358,10 @@ async function handleGenerate() {
     const built = await buildBriefBlob();
     if (!built) return; // validation failure already surfaced in #status
 
-    const { blob, filename, overview: ov, creatives, client } = built;
+    const { blob, filename } = built;
 
     saveAs(blob, filename);
-
-    // Persist this brief into the shared store. If we were editing a loaded
-    // brief, update it in place; otherwise create a new record.
-    const form = state.forms[state.briefType];
-    const stored = upsertBrief({
-      id: form.loadedBriefId || undefined,
-      clientId: client.id,
-      clientName: client.name,
-      briefType: state.briefType,
-      ideaName: ov['Idea Name'] || '',
-      angleName: ov['Angle Name'] || '',
-      overview: { ...ov },
-      creatives: creatives.map(c => ({ ...c })),
-    });
-    form.loadedBriefId = stored.id;
-    saveState();
-    renderClientPicker();
+    saveBuiltBrief(built);
 
     status.className = 'success';
     status.textContent = `✓ Generated ${filename} (saved to My Briefs)`;
@@ -1364,39 +1372,6 @@ async function handleGenerate() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Generate Brief';
-  }
-}
-
-async function handleCopyHtml() {
-  const status = document.getElementById('status');
-  const btn = document.getElementById('copy-html-btn');
-  btn.disabled = true;
-  btn.textContent = 'Copying…';
-
-  try {
-    const built = await buildBriefBlob();
-    if (!built) return;
-
-    const { blob, filename } = built;
-    const inner = await docxBlobToHtml(blob);
-    const fullHtml = wrapHtmlForPaste(inner, { title: filename });
-    await copyHtmlToClipboard(fullHtml);
-
-    status.className = 'success';
-    status.textContent = '✓ Copied HTML to clipboard. Paste into Google Docs.';
-    setTimeout(() => {
-      if (status.textContent.startsWith('✓ Copied HTML')) {
-        status.className = '';
-        status.textContent = '';
-      }
-    }, 5000);
-  } catch (err) {
-    console.error(err);
-    status.className = 'error';
-    status.textContent = `Error: ${err.message}`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Copy HTML';
   }
 }
 
@@ -1414,7 +1389,19 @@ async function handlePreviewHtml() {
     const inner = await docxBlobToHtml(blob);
     const fullHtml = wrapHtmlForPaste(inner, { title: filename });
 
+    // Save the brief just like Generate does, so previewing also persists it.
+    saveBuiltBrief(built);
+
     openHtmlPreviewModal({ fullHtml, filename });
+
+    status.className = 'success';
+    status.textContent = '✓ Saved to My Briefs';
+    setTimeout(() => {
+      if (status.textContent === '✓ Saved to My Briefs') {
+        status.className = '';
+        status.textContent = '';
+      }
+    }, 5000);
   } catch (err) {
     console.error(err);
     status.className = 'error';
@@ -1656,7 +1643,6 @@ async function init() {
 
   document.getElementById('generate-btn').addEventListener('click', handleGenerate);
   document.getElementById('clear-btn').addEventListener('click', handleClear);
-  document.getElementById('copy-html-btn').addEventListener('click', handleCopyHtml);
   document.getElementById('preview-html-btn').addEventListener('click', handlePreviewHtml);
 }
 
