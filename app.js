@@ -156,17 +156,32 @@ function getCurrentClient() {
   return state.clients.find(c => c.id === state.clientId) || null;
 }
 
+// A value is "placeholder" if it's an unfilled bracket token like "[insert link]".
+// These should be treated as empty so auto-fill can overwrite them.
+function isPlaceholder(v) {
+  if (v == null) return false;
+  const t = String(v).trim().toLowerCase();
+  return /^\[.*\]$/.test(t) || t.includes('insert link');
+}
+
+// A field is fillable (auto-fill may set it) when it's empty or a placeholder.
+function isFillable(v) {
+  return v == null || v === '' || isPlaceholder(v);
+}
+
 function applyClientDefaults() {
-  // Pre-fill empty overview fields. Two layers, both leave user values alone:
+  // Pre-fill overview fields. Two layers:
   //   1. Template-level defaults (e.g. video Ratio Format(s) → "9:16 (Story/Reel)")
   //   2. Client-level defaults from clients.json
-  // Client defaults can override template defaults if both target the same field.
+  // Empty/placeholder fields get filled. Defs marked `force` always overwrite
+  // (e.g. ratio formats are fixed company standards).
   const config = TEMPLATES[state.briefType];
   const ov = state.forms[state.briefType].overview;
 
   // Template defaults
   for (const def of config.overview) {
-    if (def.default != null && (ov[def.field] == null || ov[def.field] === '')) {
+    if (def.default == null) continue;
+    if (def.force || isFillable(ov[def.field])) {
       ov[def.field] = def.default;
     }
   }
@@ -175,7 +190,7 @@ function applyClientDefaults() {
   const client = getCurrentClient();
   if (client && client.defaults) {
     for (const def of config.overview) {
-      if (client.defaults[def.field] != null && (ov[def.field] == null || ov[def.field] === '')) {
+      if (client.defaults[def.field] != null && isFillable(ov[def.field])) {
         ov[def.field] = client.defaults[def.field];
       }
     }
@@ -209,7 +224,7 @@ function applyClientSwitch() {
       if (!config.overview.some(d => d.field === field)) continue;
       const cur = ov[field];
       const knownDefaults = allClientDefaultValues(field);
-      const isAutoFilled = cur == null || cur === '' || knownDefaults.has(cur);
+      const isAutoFilled = isFillable(cur) || knownDefaults.has(cur);
       if (!isAutoFilled) continue; // user edited this — leave it alone
       const next = client && client.defaults ? client.defaults[field] : undefined;
       ov[field] = next != null ? next : '';
@@ -1155,6 +1170,22 @@ function handleQuickFillParse() {
       `Continue?`
     );
     if (!ok) return;
+  }
+
+  // Flag if the pasted Landing Page URL differs from the selected client's
+  // pre-loaded default — confirm before changing it.
+  const client = getCurrentClient();
+  const clientLP = client && client.defaults ? client.defaults['Landing Page URL'] : null;
+  const parsedLP = parsed.overview['Landing Page URL'];
+  if (clientLP && parsedLP && !isPlaceholder(parsedLP) &&
+      String(parsedLP).trim() !== String(clientLP).trim()) {
+    const useParsed = confirm(
+      `The pasted brief has a different Landing Page URL than ${client.name}'s default:\n\n` +
+      `Pre-loaded:  ${clientLP}\n` +
+      `Pasted:      ${parsedLP}\n\n` +
+      `OK = use the pasted URL\nCancel = keep ${client.name}'s pre-loaded URL`
+    );
+    if (!useParsed) parsed.overview['Landing Page URL'] = clientLP;
   }
 
   // If there are dropdown-value warnings, open the review modal first.
