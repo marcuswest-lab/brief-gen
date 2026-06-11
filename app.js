@@ -1198,10 +1198,14 @@ function handleQuickFillParse() {
 }
 
 function applyParsedBrief(parsed) {
+  // File names are assigned later (via the tracker / PM tools), so never
+  // populate the per-creative File Name field from a parsed brief.
+  const creatives = (parsed.creatives.length > 0 ? parsed.creatives : [{}])
+    .map(c => { const { 'File Name': _drop, ...rest } = c; return rest; });
   state.briefType = parsed.briefType;
   state.forms[parsed.briefType] = {
     overview: { ...parsed.overview },
-    creatives: parsed.creatives.length > 0 ? parsed.creatives : [{}],
+    creatives,
     activePresetId: null,
     loadedBriefId: null,
   };
