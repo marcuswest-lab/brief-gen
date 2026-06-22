@@ -411,8 +411,8 @@ function buildClientSectionMeeting(clientName, records, now) {
   } else if (clientName === 'Dan Henry') {
     const groups = [
       ['MDW Funnel', isDanHenryMdw],
-      ['PB Funnel',  isDanHenryPb],
       ['5MS Funnel', isDanHenry5ms],
+      ['PB Funnel',  isDanHenryPb],
     ];
     for (const [subLabel, filt] of groups) {
       const subLaunched = launched.filter(filt);
