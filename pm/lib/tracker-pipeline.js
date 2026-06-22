@@ -197,8 +197,8 @@ function isSpanish(rec) {
   return n.startsWith('SP -') || n.startsWith('SP-');
 }
 
-// Dan Henry split: ads are prefixed `MDW` or `PB` to denote which of the
-// two funnels they target. They have very different KPIs ($200 CPA for MDW
+// Dan Henry split: ads are prefixed `MDW`, `PB`, or `5MS` to denote which
+// funnel they target. They have very different KPIs ($200 CPA for MDW
 // vs $12 CPR for PB) so the pipeline notes must show them as separate
 // sub-sections per client (mirrors the VAM / NSR split pattern).
 function isDanHenryMdw(rec) {
@@ -206,6 +206,9 @@ function isDanHenryMdw(rec) {
 }
 function isDanHenryPb(rec) {
   return rec.name.trim().toUpperCase().startsWith('PB');
+}
+function isDanHenry5ms(rec) {
+  return rec.name.trim().toUpperCase().startsWith('5MS');
 }
 
 function isLaunched(rec) {
@@ -409,6 +412,7 @@ function buildClientSectionMeeting(clientName, records, now) {
     const groups = [
       ['MDW Funnel', isDanHenryMdw],
       ['PB Funnel',  isDanHenryPb],
+      ['5MS Funnel', isDanHenry5ms],
     ];
     for (const [subLabel, filt] of groups) {
       const subLaunched = launched.filter(filt);
@@ -546,8 +550,9 @@ function buildClientSectionWeekly(clientName, records) {
     // Split by funnel — MDW vs PB. Each has different KPIs and ad inventory.
     parts.push(renderFunnel('MDW Funnel', pipelineRecs.filter(isDanHenryMdw)));
     parts.push(renderFunnel('PB Funnel',  pipelineRecs.filter(isDanHenryPb)));
-    // Anything that doesn't start with MDW/PB → fall back to "Other"
-    const other = pipelineRecs.filter(r => !isDanHenryMdw(r) && !isDanHenryPb(r));
+    parts.push(renderFunnel('5MS Funnel', pipelineRecs.filter(isDanHenry5ms)));
+    // Anything that doesn't start with MDW/PB/5MS → fall back to "Other"
+    const other = pipelineRecs.filter(r => !isDanHenryMdw(r) && !isDanHenryPb(r) && !isDanHenry5ms(r));
     if (other.length) parts.push(renderFunnel('Other', other));
   } else {
     parts.push(renderFunnel('', pipelineRecs));
