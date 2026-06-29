@@ -457,28 +457,33 @@ export function buildMeetingNotesHtml(workbooksWithNames, now) {
   const today = now.toISOString().slice(0, 10);
 
   const sections = [];
+  const summaries = [];
   for (const { workbook, filename } of workbooksWithNames) {
+    const clientName = detectClientName(filename);
     try {
-      const clientName = detectClientName(filename);
       const records = loadRecords(workbook);
       sections.push(buildClientSectionMeeting(clientName, records, now));
+      summaries.push(...summarizeWorkbook(clientName, records));
     } catch (e) {
       sections.push(
-        `<section><h2>${escapeHtml(detectClientName(filename))}</h2>` +
+        `<section><h2>${escapeHtml(clientName)}</h2>` +
         `<p style="color:#b00">Could not read tracker: ${escapeHtml(String(e))}</p></section>`
       );
     }
   }
 
   const body = sections.length ? sections.join('\n<hr/>\n') : '<p><em>No trackers uploaded.</em></p>';
+  const summaryWidget = renderSummaryWidget(summaries);
   return `<!doctype html>
 <html><head><meta charset="utf-8"/>
 <title>Creative Meeting Notes — ${today}</title>
-<style>${PAGE_STYLE_MEETING}</style></head>
+<style>${PAGE_STYLE_MEETING}
+${SUMMARY_WIDGET_STYLE}</style></head>
 <body>
 <h1>Weekly Creative Meeting Notes</h1>
 <p style="color:#666">Generated ${today}</p>
 ${body}
+${summaryWidget ? `<hr/>\n<section>${summaryWidget}</section>` : ''}
 </body></html>
 `;
 }
@@ -589,7 +594,7 @@ export function buildWeeklyUpdatesHtml(workbooksWithNames, now) {
     try {
       const records = loadRecords(workbook);
       sections.push(buildClientSectionWeekly(clientName, records));
-      summaries.push(summarizeClientPipeline(clientName, records));
+      summaries.push(...summarizeWorkbook(clientName, records));
     } catch (e) {
       sections.push(
         `<p><b>${escapeHtml(clientName)}</b></p>` +
@@ -638,65 +643,66 @@ function pipelineCounts(records) {
   };
 }
 
-function summarizeClientPipeline(clientName, records) {
+// Returns one or more summary entries per workbook. VAM is split into its
+// VAM Funnel + NSR Funnel sub-funnels (same split as the pipelines above);
+// every other client is a single entry.
+function summarizeWorkbook(clientName, records) {
   const pipelineRecs = records.filter(r => isPipelineStatus(r) && !isLaunched(r));
-  return { client: clientName, counts: pipelineCounts(pipelineRecs) };
+  if (clientName === 'VAM') {
+    return [
+      { label: 'VAM Funnel', counts: pipelineCounts(pipelineRecs.filter(r => !isNsr(r))) },
+      { label: 'NSR Funnel', counts: pipelineCounts(pipelineRecs.filter(isNsr)) },
+    ];
+  }
+  return [{ label: clientName, counts: pipelineCounts(pipelineRecs) }];
 }
 
-function cell(c) {
-  // One cell rendering "{batches} ({ads} ads)" — dash when empty.
-  if (!c || (!c.batches && !c.ads)) return '<span style="color:#bbb">—</span>';
-  return `<b>${c.batches}</b> <span style="color:#888">(${c.ads} ad${c.ads === 1 ? '' : 's'})</span>`;
+// "{N} batches ({M} ads) — Statics X (a), Videos Y (b)" for one stage, or
+// "none" when the stage is empty.
+function fmtStageLine(c) {
+  const sB = c.Statics.batches, sA = c.Statics.ads;
+  const vB = c.Videos.batches, vA = c.Videos.ads;
+  const tB = sB + vB, tA = sA + vA;
+  if (!tB) return 'none';
+  const seg = [];
+  if (sB) seg.push(`Statics ${sB} (${sA} ad${sA === 1 ? '' : 's'})`);
+  if (vB) seg.push(`Videos ${vB} (${vA} ad${vA === 1 ? '' : 's'})`);
+  return `<b>${tB}</b> batch${tB === 1 ? '' : 'es'} (${tA} ad${tA === 1 ? '' : 's'}) — ${seg.join(', ')}`;
 }
 
-function summaryRow(name, counts, isTotal) {
-  const r = counts.ready, p = counts.production;
-  const rB = r.Statics.batches + r.Videos.batches;
-  const pB = p.Statics.batches + p.Videos.batches;
-  const cls = isTotal ? ' class="total-row"' : '';
-  return `<tr${cls}>
-    <td class="client">${escapeHtml(name)}</td>
-    <td>${cell(r.Statics)}</td>
-    <td>${cell(r.Videos)}</td>
-    <td class="subtot">${rB ? `<b>${rB}</b> batch${rB === 1 ? '' : 'es'}` : '<span style="color:#bbb">—</span>'}</td>
-    <td>${cell(p.Statics)}</td>
-    <td>${cell(p.Videos)}</td>
-    <td class="subtot">${pB ? `<b>${pB}</b> batch${pB === 1 ? '' : 'es'}` : '<span style="color:#bbb">—</span>'}</td>
-  </tr>`;
+function summaryEntry(label, counts) {
+  return `<p><b>${escapeHtml(label)}</b></p>
+<ul>
+  <li>Ready to Launch: ${fmtStageLine(counts.ready)}</li>
+  <li>In Production: ${fmtStageLine(counts.production)}</li>
+</ul>`;
 }
 
 // Self-contained styles for the summary widget, scoped under .pipeline-summary
-// so they don't collide with the weekly notes styles when appended to the
-// bottom of the Weekly Creative Updates output.
-const SUMMARY_WIDGET_STYLE = `.pipeline-summary { font-family: -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif; color: #222; margin-top: 8px; }
-.pipeline-summary h2 { font-size: 15pt; margin-bottom: 4px; color: #1a3d7a; }
-.pipeline-summary .headline { background: #f1f5ff; border: 1px solid #d3ddf5; border-radius: 8px; padding: 14px 18px; margin: 12px 0 18px; }
-.pipeline-summary .headline .big { font-size: 20pt; font-weight: 700; color: #1a3d7a; }
-.pipeline-summary .headline .sub { color: #555; margin-top: 2px; }
-.pipeline-summary table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 10.5pt; }
-.pipeline-summary th, .pipeline-summary td { border: 1px solid #e0e4ee; padding: 7px 10px; text-align: center; }
-.pipeline-summary thead th { background: #1a3d7a; color: #fff; font-weight: 600; }
-.pipeline-summary thead tr.group th { background: #14305e; }
-.pipeline-summary td.client, .pipeline-summary th.client { text-align: left; font-weight: 600; }
-.pipeline-summary td.subtot { background: #f7f9fc; }
-.pipeline-summary tr.total-row td { background: #eef3ff; font-weight: 600; border-top: 2px solid #1a3d7a; }
-.pipeline-summary tbody tr:nth-child(even) td:not(.subtot) { background: #fafbfe; }`;
+// so they don't collide with the surrounding notes styles. Bulleted/heading
+// form (no table) so it pastes cleanly into Google Docs.
+const SUMMARY_WIDGET_STYLE = `.pipeline-summary { margin-top: 8px; }
+.pipeline-summary h2 { font-size: 14pt; margin-bottom: 2px; }
+.pipeline-summary .headline { margin: 6px 0 14px; }
+.pipeline-summary .headline b { font-size: 12pt; }
+.pipeline-summary ul { margin: 2px 0 10px 0; }
+.pipeline-summary li { margin: 2px 0; }`;
 
-// Inner HTML for the pipeline summary widget (no page wrapper). `summaries`
-// is an array of summarizeClientPipeline() results.
-function renderSummaryWidget(summaries) {
-  if (!summaries.length) return '';
+// Inner HTML for the pipeline summary widget (no page wrapper). `entries`
+// is a flat array of { label, counts } from summarizeWorkbook().
+function renderSummaryWidget(entries) {
+  if (!entries.length) return '';
 
   const zero = () => ({ batches: 0, ads: 0 });
   const totals = {
     ready: { Statics: zero(), Videos: zero() },
     production: { Statics: zero(), Videos: zero() },
   };
-  for (const s of summaries) {
+  for (const e of entries) {
     for (const st of ['ready', 'production']) {
       for (const k of ['Statics', 'Videos']) {
-        totals[st][k].batches += s.counts[st][k].batches;
-        totals[st][k].ads += s.counts[st][k].ads;
+        totals[st][k].batches += e.counts[st][k].batches;
+        totals[st][k].ads += e.counts[st][k].ads;
       }
     }
   }
@@ -704,33 +710,13 @@ function renderSummaryWidget(summaries) {
   const totalReadyAds = totals.ready.Statics.ads + totals.ready.Videos.ads;
   const totalProdBatches = totals.production.Statics.batches + totals.production.Videos.batches;
 
-  const rows = summaries.map(s => summaryRow(s.client, s.counts, false)).join('\n');
-  const totalRow = summaryRow('All Clients', totals, true);
+  const body = entries.map(e => summaryEntry(e.label, e.counts)).join('\n');
 
   return `<div class="pipeline-summary">
 <h2>Pipeline Summary</h2>
-<div class="headline">
-  <div class="big">${totalReadyBatches} batch${totalReadyBatches === 1 ? '' : 'es'} ready to launch</div>
-  <div class="sub">${totalReadyAds} ad${totalReadyAds === 1 ? '' : 's'} across all clients · ${totalProdBatches} batch${totalProdBatches === 1 ? '' : 'es'} still in production</div>
-</div>
-<table>
-  <thead>
-    <tr class="group">
-      <th class="client" rowspan="2">Client</th>
-      <th colspan="3">Ready to Launch</th>
-      <th colspan="3">In Production</th>
-    </tr>
-    <tr>
-      <th>Statics</th><th>Videos</th><th>Total</th>
-      <th>Statics</th><th>Videos</th><th>Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${rows}
-    ${totalRow}
-  </tbody>
-</table>
-<p style="color:#888;font-size:9.5pt;margin-top:10px">Each cell shows <b>batches</b> (total ad variations). Uses the same batch grouping as the pipelines above.</p>
+<p class="headline"><b>${totalReadyBatches} batch${totalReadyBatches === 1 ? '' : 'es'} ready to launch</b> (${totalReadyAds} ad${totalReadyAds === 1 ? '' : 's'}) · ${totalProdBatches} batch${totalProdBatches === 1 ? '' : 'es'} still in production</p>
+${body}
+<p style="color:#888;font-size:9.5pt;margin-top:6px">Counts use the same batch grouping as the pipelines above (batches, with total ad variations).</p>
 </div>`;
 }
 
