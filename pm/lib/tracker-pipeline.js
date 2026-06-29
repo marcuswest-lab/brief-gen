@@ -583,27 +583,32 @@ export function buildWeeklyUpdatesHtml(workbooksWithNames, now) {
   const todayDisp = `${now.getMonth() + 1}/${now.getDate()}/${String(now.getFullYear()).slice(-2)}`;
 
   const sections = [];
+  const summaries = [];
   for (const { workbook, filename } of workbooksWithNames) {
+    const clientName = detectClientName(filename);
     try {
-      const clientName = detectClientName(filename);
       const records = loadRecords(workbook);
       sections.push(buildClientSectionWeekly(clientName, records));
+      summaries.push(summarizeClientPipeline(clientName, records));
     } catch (e) {
       sections.push(
-        `<p><b>${escapeHtml(detectClientName(filename))}</b></p>` +
+        `<p><b>${escapeHtml(clientName)}</b></p>` +
         `<p style="color:#b00">Could not read tracker: ${escapeHtml(String(e))}</p>`
       );
     }
   }
 
   const body = sections.length ? sections.join('\n<hr>\n') : '<p><em>No trackers uploaded.</em></p>';
+  const summaryWidget = renderSummaryWidget(summaries);
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <title>Weekly Creative Updates — ${todayDisp}</title>
-<style>${PAGE_STYLE_WEEKLY}</style></head>
+<style>${PAGE_STYLE_WEEKLY}
+${SUMMARY_WIDGET_STYLE}</style></head>
 <body>
 <h1>${todayDisp}</h1>
 ${body}
+${summaryWidget ? `<hr>\n${summaryWidget}` : ''}
 </body></html>
 `;
 }
@@ -614,6 +619,119 @@ export function suggestedWeeklyFilename(now) {
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   return `weekly_creative_notes_${y}${m}${d}.html`;
+}
+
+// -------- Pipeline Summary (cross-client batch + ad counts) --------
+
+// For a set of pipeline records, count batches and ads per stage × kind.
+// "batches" = distinct (Request Doc + batch name) groups; "ads" = the sum of
+// variations across those batches (uses the same grouping as Weekly Updates so
+// the numbers line up with that tab).
+function pipelineCounts(records) {
+  const calc = (stageName, kind) => {
+    const batches = groupByIdea(byStageAndKind(records, stageName, kind));
+    return { batches: batches.length, ads: batches.reduce((s, b) => s + b.count, 0) };
+  };
+  return {
+    ready: { Statics: calc('ready', 'Statics'), Videos: calc('ready', 'Videos') },
+    production: { Statics: calc('production', 'Statics'), Videos: calc('production', 'Videos') },
+  };
+}
+
+function summarizeClientPipeline(clientName, records) {
+  const pipelineRecs = records.filter(r => isPipelineStatus(r) && !isLaunched(r));
+  return { client: clientName, counts: pipelineCounts(pipelineRecs) };
+}
+
+function cell(c) {
+  // One cell rendering "{batches} ({ads} ads)" — dash when empty.
+  if (!c || (!c.batches && !c.ads)) return '<span style="color:#bbb">—</span>';
+  return `<b>${c.batches}</b> <span style="color:#888">(${c.ads} ad${c.ads === 1 ? '' : 's'})</span>`;
+}
+
+function summaryRow(name, counts, isTotal) {
+  const r = counts.ready, p = counts.production;
+  const rB = r.Statics.batches + r.Videos.batches;
+  const pB = p.Statics.batches + p.Videos.batches;
+  const cls = isTotal ? ' class="total-row"' : '';
+  return `<tr${cls}>
+    <td class="client">${escapeHtml(name)}</td>
+    <td>${cell(r.Statics)}</td>
+    <td>${cell(r.Videos)}</td>
+    <td class="subtot">${rB ? `<b>${rB}</b> batch${rB === 1 ? '' : 'es'}` : '<span style="color:#bbb">—</span>'}</td>
+    <td>${cell(p.Statics)}</td>
+    <td>${cell(p.Videos)}</td>
+    <td class="subtot">${pB ? `<b>${pB}</b> batch${pB === 1 ? '' : 'es'}` : '<span style="color:#bbb">—</span>'}</td>
+  </tr>`;
+}
+
+// Self-contained styles for the summary widget, scoped under .pipeline-summary
+// so they don't collide with the weekly notes styles when appended to the
+// bottom of the Weekly Creative Updates output.
+const SUMMARY_WIDGET_STYLE = `.pipeline-summary { font-family: -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif; color: #222; margin-top: 8px; }
+.pipeline-summary h2 { font-size: 15pt; margin-bottom: 4px; color: #1a3d7a; }
+.pipeline-summary .headline { background: #f1f5ff; border: 1px solid #d3ddf5; border-radius: 8px; padding: 14px 18px; margin: 12px 0 18px; }
+.pipeline-summary .headline .big { font-size: 20pt; font-weight: 700; color: #1a3d7a; }
+.pipeline-summary .headline .sub { color: #555; margin-top: 2px; }
+.pipeline-summary table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 10.5pt; }
+.pipeline-summary th, .pipeline-summary td { border: 1px solid #e0e4ee; padding: 7px 10px; text-align: center; }
+.pipeline-summary thead th { background: #1a3d7a; color: #fff; font-weight: 600; }
+.pipeline-summary thead tr.group th { background: #14305e; }
+.pipeline-summary td.client, .pipeline-summary th.client { text-align: left; font-weight: 600; }
+.pipeline-summary td.subtot { background: #f7f9fc; }
+.pipeline-summary tr.total-row td { background: #eef3ff; font-weight: 600; border-top: 2px solid #1a3d7a; }
+.pipeline-summary tbody tr:nth-child(even) td:not(.subtot) { background: #fafbfe; }`;
+
+// Inner HTML for the pipeline summary widget (no page wrapper). `summaries`
+// is an array of summarizeClientPipeline() results.
+function renderSummaryWidget(summaries) {
+  if (!summaries.length) return '';
+
+  const zero = () => ({ batches: 0, ads: 0 });
+  const totals = {
+    ready: { Statics: zero(), Videos: zero() },
+    production: { Statics: zero(), Videos: zero() },
+  };
+  for (const s of summaries) {
+    for (const st of ['ready', 'production']) {
+      for (const k of ['Statics', 'Videos']) {
+        totals[st][k].batches += s.counts[st][k].batches;
+        totals[st][k].ads += s.counts[st][k].ads;
+      }
+    }
+  }
+  const totalReadyBatches = totals.ready.Statics.batches + totals.ready.Videos.batches;
+  const totalReadyAds = totals.ready.Statics.ads + totals.ready.Videos.ads;
+  const totalProdBatches = totals.production.Statics.batches + totals.production.Videos.batches;
+
+  const rows = summaries.map(s => summaryRow(s.client, s.counts, false)).join('\n');
+  const totalRow = summaryRow('All Clients', totals, true);
+
+  return `<div class="pipeline-summary">
+<h2>Pipeline Summary</h2>
+<div class="headline">
+  <div class="big">${totalReadyBatches} batch${totalReadyBatches === 1 ? '' : 'es'} ready to launch</div>
+  <div class="sub">${totalReadyAds} ad${totalReadyAds === 1 ? '' : 's'} across all clients · ${totalProdBatches} batch${totalProdBatches === 1 ? '' : 'es'} still in production</div>
+</div>
+<table>
+  <thead>
+    <tr class="group">
+      <th class="client" rowspan="2">Client</th>
+      <th colspan="3">Ready to Launch</th>
+      <th colspan="3">In Production</th>
+    </tr>
+    <tr>
+      <th>Statics</th><th>Videos</th><th>Total</th>
+      <th>Statics</th><th>Videos</th><th>Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows}
+    ${totalRow}
+  </tbody>
+</table>
+<p style="color:#888;font-size:9.5pt;margin-top:10px">Each cell shows <b>batches</b> (total ad variations). Uses the same batch grouping as the pipelines above.</p>
+</div>`;
 }
 
 // -------- Workbook loader (shared helper for the tabs) --------
