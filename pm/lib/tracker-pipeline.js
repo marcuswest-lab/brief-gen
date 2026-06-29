@@ -657,25 +657,28 @@ function summarizeWorkbook(clientName, records) {
   return [{ label: clientName, counts: pipelineCounts(pipelineRecs) }];
 }
 
-// "{N} batches ({M} ads) — Statics X (a), Videos Y (b)" for one stage, or
-// "none" when the stage is empty.
-function fmtStageLine(c) {
+// Total / Videos / Statics bullets for one stage, or a single "none" bullet
+// when the stage is empty.
+function stageBullets(c) {
   const sB = c.Statics.batches, sA = c.Statics.ads;
   const vB = c.Videos.batches, vA = c.Videos.ads;
   const tB = sB + vB, tA = sA + vA;
-  if (!tB) return 'none';
-  const seg = [];
-  if (sB) seg.push(`Statics ${sB} (${sA} ad${sA === 1 ? '' : 's'})`);
-  if (vB) seg.push(`Videos ${vB} (${vA} ad${vA === 1 ? '' : 's'})`);
-  return `<b>${tB}</b> batch${tB === 1 ? '' : 'es'} (${tA} ad${tA === 1 ? '' : 's'}) — ${seg.join(', ')}`;
+  if (!tB) return '<ul>\n  <li>none</li>\n</ul>';
+  const b = (name, batches, ads) =>
+    `  <li>${name}: <b>${batches}</b> batch${batches === 1 ? '' : 'es'} (${ads} ad${ads === 1 ? '' : 's'})</li>`;
+  return `<ul>
+${b('Total', tB, tA)}
+${b('Videos', vB, vA)}
+${b('Statics', sB, sA)}
+</ul>`;
 }
 
 function summaryEntry(label, counts) {
   return `<p><b>${escapeHtml(label)}</b></p>
-<ul>
-  <li>Ready to Launch: ${fmtStageLine(counts.ready)}</li>
-  <li>In Production: ${fmtStageLine(counts.production)}</li>
-</ul>`;
+<p><i>Ready to launch</i></p>
+${stageBullets(counts.ready)}
+<p><i>In Production</i></p>
+${stageBullets(counts.production)}`;
 }
 
 // Self-contained styles for the summary widget, scoped under .pipeline-summary
