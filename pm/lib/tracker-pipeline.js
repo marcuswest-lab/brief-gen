@@ -197,19 +197,25 @@ function isSpanish(rec) {
   return n.startsWith('SP -') || n.startsWith('SP-');
 }
 
-// Dan Henry split: ads are prefixed `MDW`, `PB`, or `5MS` to denote which
-// funnel they target. They have very different KPIs ($200 CPA for MDW
-// vs $12 CPR for PB) so the pipeline notes must show them as separate
-// sub-sections per client (mirrors the VAM / NSR split pattern).
-function isDanHenryMdw(rec) {
-  return rec.name.trim().toUpperCase().startsWith('MDW');
+// Dan Henry split: ads belong to the MDW, PB, or 5MS funnel (very different
+// KPIs — $200 CPA for MDW vs $12 CPR for PB) so the notes show them as
+// separate sub-sections (mirrors the VAM / NSR split pattern).
+//
+// The funnel marker is applied INCONSISTENTLY: PB and 5MS ads reliably carry
+// their token as a creative-name prefix, but MDW ads sometimes carry "MDW"
+// only in the Folder Link text (e.g. "6/26 | MDW | Teacher's Brain Confession")
+// and sometimes omit it entirely (the "Chlamidya Comparision" videos have no
+// MDW token anywhere). So 5MS / PB are matched as delimited tokens across the
+// name + folder text + idea + request, and everything else falls back to the
+// primary MDW funnel — which keeps untagged MDW creatives out of "Other".
+function funnelHasToken(rec, token) {
+  const hay = [rec.name, rec.folderText, rec.idea, rec.reqText]
+    .filter(Boolean).join(' ').toUpperCase();
+  return new RegExp(`(^|[\\s|/\\-])${token}([\\s|/\\-]|$)`).test(hay);
 }
-function isDanHenryPb(rec) {
-  return rec.name.trim().toUpperCase().startsWith('PB');
-}
-function isDanHenry5ms(rec) {
-  return rec.name.trim().toUpperCase().startsWith('5MS');
-}
+function isDanHenry5ms(rec) { return funnelHasToken(rec, '5MS'); }
+function isDanHenryPb(rec)  { return funnelHasToken(rec, 'PB'); }
+function isDanHenryMdw(rec) { return !isDanHenry5ms(rec) && !isDanHenryPb(rec); }
 
 function isLaunched(rec) {
   return rec.launchDt != null || hasValue(rec.launchRaw);
@@ -231,10 +237,16 @@ function conceptPrefix(name) {
 }
 
 function batchName(rec) {
-  if (hasValue(rec.folderText) && !/^0+\s*-\s*copy submission/i.test(rec.folderText)) {
-    return rec.folderText;
+  // Use the Folder Link text as the batch label only when it's a human batch
+  // name (e.g. "Qualification Check | Batch 2"). Some clients (CEO Lawyer)
+  // paste a raw Dropbox URL into that cell, which is unique per variation and
+  // would explode every ad into its own one-off "batch" — fall back to the
+  // Idea Name (then concept prefix) so those variations roll up correctly.
+  const ft = rec.folderText;
+  if (hasValue(ft) && !/^https?:\/\//i.test(ft.trim()) && !/^0+\s*-\s*copy submission/i.test(ft)) {
+    return ft;
   }
-  return conceptPrefix(rec.name) || rec.name;
+  return (hasValue(rec.idea) ? rec.idea : null) || conceptPrefix(rec.name) || rec.name;
 }
 
 function batchKey(rec) {
