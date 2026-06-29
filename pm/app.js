@@ -2100,40 +2100,80 @@ function renderTrackerReportTab(cfg) {
 
   wrap.appendChild(card);
 
-  // Result card — render inline so the PM can select-and-copy directly, or
-  // click "Copy for Google Docs" to put the formatted content on the clipboard.
+  // Result cards — render inline so the PM can select-and-copy directly, or
+  // click "Copy for Google Docs". The Pipeline Summary widget is split out of
+  // the generated HTML into its own preview window below the main notes, so it
+  // can be read and copied separately.
   if (state[htmlKey]) {
-    const resCard = el('div', { class: 'card', style: 'margin-top:16px;' });
-    const head = el('div', { class: 'form-row', style: 'align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;' });
-    head.appendChild(el('h3', { style: 'margin:0;' }, 'Preview'));
-    const headActions = el('div', { class: 'form-row', style: 'gap:8px;' });
+    const tmp = el('div');
+    tmp.innerHTML = extractBodyHtml(state[htmlKey]);
 
-    const previewBody = el('div', { class: 'tracker-report-preview' });
-    previewBody.innerHTML = extractBodyHtml(state[htmlKey]);
+    // Detach the Pipeline Summary (and its preceding divider / empty wrapper).
+    let summaryHtml = '';
+    const summaryNode = tmp.querySelector('.pipeline-summary');
+    if (summaryNode) {
+      summaryHtml = summaryNode.outerHTML;
+      let top = summaryNode;
+      if (top.parentElement && top.parentElement !== tmp && top.parentElement.tagName === 'SECTION') {
+        top = top.parentElement;
+      }
+      const prev = top.previousElementSibling;
+      top.remove();
+      if (prev && prev.tagName === 'HR') prev.remove();
+    }
 
-    headActions.appendChild(el('button', {
-      type: 'button',
-      class: 'btn-primary',
-      onclick: async () => {
-        const ok = await copyHtmlAsRichText(previewBody);
-        flashStatus(ok ? 'Copied — paste into Google Docs' : 'Copy failed', ok ? 'success' : 'error');
-      },
-    }, 'Copy for Google Docs'));
-    headActions.appendChild(el('button', {
-      type: 'button',
-      class: 'btn-secondary',
-      onclick: async () => {
-        const ok = await copyToClipboard(state[htmlKey]);
-        flashStatus(ok ? 'HTML source copied' : 'Copy failed', ok ? 'success' : 'error');
-      },
-    }, 'Copy HTML source'));
-    head.appendChild(headActions);
-    resCard.appendChild(head);
+    const makePreviewCard = ({ title, innerHtml, hint, sourceHtml }) => {
+      const resCard = el('div', { class: 'card', style: 'margin-top:16px;' });
+      const head = el('div', { class: 'form-row', style: 'align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;' });
+      head.appendChild(el('h3', { style: 'margin:0;' }, title));
+      const headActions = el('div', { class: 'form-row', style: 'gap:8px;' });
 
-    resCard.appendChild(el('p', { class: 'muted', style: 'margin:8px 0 12px 0;font-size:13px;' },
-      'Select the content below and copy directly, or click "Copy for Google Docs" to grab the formatted version.'));
-    resCard.appendChild(previewBody);
-    wrap.appendChild(resCard);
+      const previewBody = el('div', { class: 'tracker-report-preview' });
+      previewBody.innerHTML = innerHtml;
+
+      headActions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn-primary',
+        onclick: async () => {
+          const ok = await copyHtmlAsRichText(previewBody);
+          flashStatus(ok ? 'Copied — paste into Google Docs' : 'Copy failed', ok ? 'success' : 'error');
+        },
+      }, 'Copy for Google Docs'));
+      if (sourceHtml) {
+        headActions.appendChild(el('button', {
+          type: 'button',
+          class: 'btn-secondary',
+          onclick: async () => {
+            const ok = await copyToClipboard(sourceHtml);
+            flashStatus(ok ? 'HTML source copied' : 'Copy failed', ok ? 'success' : 'error');
+          },
+        }, 'Copy HTML source'));
+      }
+      head.appendChild(headActions);
+      resCard.appendChild(head);
+
+      if (hint) {
+        resCard.appendChild(el('p', { class: 'muted', style: 'margin:8px 0 12px 0;font-size:13px;' }, hint));
+      }
+      resCard.appendChild(previewBody);
+      return resCard;
+    };
+
+    wrap.appendChild(makePreviewCard({
+      title: 'Preview',
+      innerHtml: tmp.innerHTML,
+      hint: 'Select the content below and copy directly, or click "Copy for Google Docs" to grab the formatted version.',
+      sourceHtml: state[htmlKey],
+    }));
+
+    if (summaryHtml) {
+      wrap.appendChild(makePreviewCard({
+        title: '📊 Pipeline Summary',
+        innerHtml: summaryHtml,
+        hint: 'Cross-client batch & ad counts — copy this into the doc separately.',
+        sourceHtml: '',
+      }));
+    }
   }
 
   async function handleFiles(fileList) {
