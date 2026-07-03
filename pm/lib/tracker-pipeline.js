@@ -526,40 +526,36 @@ function groupByIdea(records) {
   return out;
 }
 
-function renderBatchListWeekly(items) {
-  if (!items.length) return '<li><i>(none currently)</i></li>';
-  return items.map((it, i) => {
-    const idea = escapeHtml(it.idea);
-    const suffix = it.count > 1 ? ` (${it.count} variations)` : '';
-    return it.link
-      ? `<li>Batch ${i + 1} — <a href="${escapeHtml(it.link)}">${idea}</a>${suffix}</li>`
-      : `<li>Batch ${i + 1} — ${idea}${suffix}</li>`;
-  }).join('\n');
-}
-
 function byStageAndKind(records, stageName, kind) {
   return records.filter(r => r.kind === kind && stage(r) === stageName);
 }
 
 function renderFunnel(label, records) {
+  const counts = pipelineCounts(records);
   const out = [];
   if (label) out.push(`<p><b>${escapeHtml(label)}</b></p>`);
-  const readyS = groupByIdea(byStageAndKind(records, 'ready', 'Statics'));
-  const readyV = groupByIdea(byStageAndKind(records, 'ready', 'Videos'));
-  const prodS  = groupByIdea(byStageAndKind(records, 'production', 'Statics'));
-  const prodV  = groupByIdea(byStageAndKind(records, 'production', 'Videos'));
-  out.push('<p><b>Ready to launch</b></p>');
-  out.push('<p><i>Statics:</i></p><ul>'); out.push(renderBatchListWeekly(readyS)); out.push('</ul>');
-  out.push('<p><i>Videos:</i></p><ul>');  out.push(renderBatchListWeekly(readyV)); out.push('</ul>');
-  out.push('<p><b>In Production</b></p>');
-  out.push('<p><i>Statics:</i></p><ul>'); out.push(renderBatchListWeekly(prodS)); out.push('</ul>');
-  out.push('<p><i>Videos:</i></p><ul>');  out.push(renderBatchListWeekly(prodV)); out.push('</ul>');
+  out.push('<p><i>Ready to launch</i></p>');
+  out.push(stageBullets(counts.ready));
+  out.push('<p><i>In Production</i></p>');
+  out.push(stageBullets(counts.production));
   return out.join('\n');
 }
+
+const DASHBOARD_URLS = {
+  'TCC': 'https://marcuswest-lab.github.io/tcc-creative-dashboard/',
+  'CEO Lawyer': 'https://marcuswest-lab.github.io/ceolawyer-creative-dashboard/',
+  'Nurse Coach': 'https://marcuswest-lab.github.io/nursecoach-creative-dashboard/',
+  'VAM': 'https://marcuswest-lab.github.io/vam-creative-dashboard/',
+  'Case Source': 'https://marcuswest-lab.github.io/casesource-creative-dashboard/',
+  'Dan Henry': 'https://marcuswest-lab.github.io/danhenry-creative-dashboard/',
+  'Quintessa': 'https://marcuswest-lab.github.io/quintessa-creative-dashboard/',
+};
 
 function buildClientSectionWeekly(clientName, records) {
   const pipelineRecs = records.filter(r => isPipelineStatus(r) && !isLaunched(r));
   const parts = [`<p><b>${escapeHtml(clientName)}</b></p>`];
+  const dashUrl = DASHBOARD_URLS[clientName];
+  parts.push(`<p><i>Creative Dashboard:</i>${dashUrl ? ` <a href="${dashUrl}">${escapeHtml(dashUrl)}</a>` : ''}</p>`);
   if (clientName === 'VAM') {
     parts.push(renderFunnel('VAM Funnel', pipelineRecs.filter(r => !isNsr(r))));
     parts.push(renderFunnel('NSR Funnel', pipelineRecs.filter(isNsr)));
@@ -574,6 +570,7 @@ function buildClientSectionWeekly(clientName, records) {
   } else {
     parts.push(renderFunnel('', pipelineRecs));
   }
+  parts.push('<p><i>Notes</i></p>\n<ul>\n  <li></li>\n</ul>');
   return parts.join('\n');
 }
 
@@ -663,7 +660,7 @@ function stageBullets(c) {
   const sB = c.Statics.batches, sA = c.Statics.ads;
   const vB = c.Videos.batches, vA = c.Videos.ads;
   const tB = sB + vB, tA = sA + vA;
-  if (!tB) return '<ul>\n  <li>none</li>\n</ul>';
+  if (!tB) return '<ul>\n  <li>None</li>\n</ul>';
   const b = (name, batches, ads) =>
     `  <li>${name}: <b>${batches}</b> batch${batches === 1 ? '' : 'es'} (${ads} ad${ads === 1 ? '' : 's'})</li>`;
   return `<ul>
