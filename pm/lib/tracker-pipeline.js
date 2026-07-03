@@ -648,18 +648,18 @@ function summarizeWorkbook(clientName, records) {
   const pipelineRecs = records.filter(r => isPipelineStatus(r) && !isLaunched(r));
   if (clientName === 'VAM') {
     return [
-      { label: 'VAM Funnel', counts: pipelineCounts(pipelineRecs.filter(r => !isNsr(r))) },
-      { label: 'NSR Funnel', counts: pipelineCounts(pipelineRecs.filter(isNsr)) },
+      { client: 'VAM', sub: 'VAM Funnel', counts: pipelineCounts(pipelineRecs.filter(r => !isNsr(r))) },
+      { client: 'VAM', sub: 'NSR Funnel', counts: pipelineCounts(pipelineRecs.filter(isNsr)) },
     ];
   }
   if (clientName === 'Dan Henry') {
     return [
-      { label: 'Dan Henry — MDW', counts: pipelineCounts(pipelineRecs.filter(isDanHenryMdw)) },
-      { label: 'Dan Henry — PB',  counts: pipelineCounts(pipelineRecs.filter(isDanHenryPb)) },
-      { label: 'Dan Henry — 5MS', counts: pipelineCounts(pipelineRecs.filter(isDanHenry5ms)) },
+      { client: 'Dan Henry', sub: 'MDW Funnel', counts: pipelineCounts(pipelineRecs.filter(isDanHenryMdw)) },
+      { client: 'Dan Henry', sub: 'PB Funnel',  counts: pipelineCounts(pipelineRecs.filter(isDanHenryPb)) },
+      { client: 'Dan Henry', sub: '5MS Funnel', counts: pipelineCounts(pipelineRecs.filter(isDanHenry5ms)) },
     ];
   }
-  return [{ label: clientName, counts: pipelineCounts(pipelineRecs) }];
+  return [{ client: clientName, sub: null, counts: pipelineCounts(pipelineRecs) }];
 }
 
 // Total / Videos / Statics bullets for one stage, or a single "none" bullet
@@ -678,9 +678,8 @@ ${b('Statics', sB, sA)}
 </ul>`;
 }
 
-function summaryEntry(label, counts) {
-  return `<p><b>${escapeHtml(label)}</b></p>
-<p><i>Ready to launch</i></p>
+function summaryStage(counts) {
+  return `<p><i>Ready to launch</i></p>
 ${stageBullets(counts.ready)}
 <p><i>In Production</i></p>
 ${stageBullets(counts.production)}`;
@@ -718,7 +717,30 @@ function renderSummaryWidget(entries) {
   const totalReadyAds = totals.ready.Statics.ads + totals.ready.Videos.ads;
   const totalProdBatches = totals.production.Statics.batches + totals.production.Videos.batches;
 
-  const body = entries.map(e => summaryEntry(e.label, e.counts)).join('\n');
+  // Group the flat entries by client so each client shows its Creative
+  // Dashboard link once at the top and Notes once at the bottom, with any
+  // sub-funnel splits (VAM, Dan Henry) rendered as inner sections between.
+  const groups = [];
+  const groupIdx = {};
+  for (const e of entries) {
+    if (!(e.client in groupIdx)) {
+      groupIdx[e.client] = groups.length;
+      groups.push({ client: e.client, subs: [] });
+    }
+    groups[groupIdx[e.client]].subs.push(e);
+  }
+
+  const body = groups.map(g => {
+    const dashUrl = DASHBOARD_URLS[g.client];
+    const parts = [`<p><b>${escapeHtml(g.client)}</b></p>`];
+    parts.push(`<p><i>Creative Dashboard:</i>${dashUrl ? ` <a href="${dashUrl}">${escapeHtml(dashUrl)}</a>` : ''}</p>`);
+    for (const s of g.subs) {
+      if (s.sub) parts.push(`<p><b>${escapeHtml(s.sub)}</b></p>`);
+      parts.push(summaryStage(s.counts));
+    }
+    parts.push('<p><i>Notes</i></p>\n<ul>\n  <li></li>\n</ul>');
+    return parts.join('\n');
+  }).join('\n');
 
   return `<div class="pipeline-summary">
 <h2>Pipeline Summary</h2>
