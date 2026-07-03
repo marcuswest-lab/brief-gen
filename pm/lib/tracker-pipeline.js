@@ -641,14 +641,22 @@ function pipelineCounts(records) {
 }
 
 // Returns one or more summary entries per workbook. VAM is split into its
-// VAM Funnel + NSR Funnel sub-funnels (same split as the pipelines above);
-// every other client is a single entry.
+// VAM Funnel + NSR Funnel sub-funnels and Dan Henry into its MDW/PB/5MS
+// products (same splits as the pipelines above); every other client is a
+// single entry.
 function summarizeWorkbook(clientName, records) {
   const pipelineRecs = records.filter(r => isPipelineStatus(r) && !isLaunched(r));
   if (clientName === 'VAM') {
     return [
       { label: 'VAM Funnel', counts: pipelineCounts(pipelineRecs.filter(r => !isNsr(r))) },
       { label: 'NSR Funnel', counts: pipelineCounts(pipelineRecs.filter(isNsr)) },
+    ];
+  }
+  if (clientName === 'Dan Henry') {
+    return [
+      { label: 'Dan Henry — MDW', counts: pipelineCounts(pipelineRecs.filter(isDanHenryMdw)) },
+      { label: 'Dan Henry — PB',  counts: pipelineCounts(pipelineRecs.filter(isDanHenryPb)) },
+      { label: 'Dan Henry — 5MS', counts: pipelineCounts(pipelineRecs.filter(isDanHenry5ms)) },
     ];
   }
   return [{ label: clientName, counts: pipelineCounts(pipelineRecs) }];
