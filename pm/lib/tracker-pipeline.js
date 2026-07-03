@@ -473,7 +473,7 @@ export function buildMeetingNotesHtml(workbooksWithNames, now) {
   }
 
   const body = sections.length ? sections.join('\n<hr/>\n') : '<p><em>No trackers uploaded.</em></p>';
-  const summaryWidget = renderSummaryWidget(summaries);
+  const summaryWidget = renderSummaryWidget(summaries, today);
   return `<!doctype html>
 <html><head><meta charset="utf-8"/>
 <title>Creative Meeting Notes — ${today}</title>
@@ -530,14 +530,30 @@ function byStageAndKind(records, stageName, kind) {
   return records.filter(r => r.kind === kind && stage(r) === stageName);
 }
 
+function renderBatchListWeekly(items) {
+  if (!items.length) return '<li><i>(none currently)</i></li>';
+  return items.map((it, i) => {
+    const idea = escapeHtml(it.idea);
+    const suffix = it.count > 1 ? ` (${it.count} variations)` : '';
+    return it.link
+      ? `<li>Batch ${i + 1} — <a href="${escapeHtml(it.link)}">${idea}</a>${suffix}</li>`
+      : `<li>Batch ${i + 1} — ${idea}${suffix}</li>`;
+  }).join('\n');
+}
+
 function renderFunnel(label, records) {
-  const counts = pipelineCounts(records);
   const out = [];
   if (label) out.push(`<p><b>${escapeHtml(label)}</b></p>`);
-  out.push('<p><i>Ready to launch</i></p>');
-  out.push(stageBullets(counts.ready));
-  out.push('<p><i>In Production</i></p>');
-  out.push(stageBullets(counts.production));
+  const readyS = groupByIdea(byStageAndKind(records, 'ready', 'Statics'));
+  const readyV = groupByIdea(byStageAndKind(records, 'ready', 'Videos'));
+  const prodS  = groupByIdea(byStageAndKind(records, 'production', 'Statics'));
+  const prodV  = groupByIdea(byStageAndKind(records, 'production', 'Videos'));
+  out.push('<p><b>Ready to launch</b></p>');
+  out.push('<p><i>Statics:</i></p><ul>'); out.push(renderBatchListWeekly(readyS)); out.push('</ul>');
+  out.push('<p><i>Videos:</i></p><ul>');  out.push(renderBatchListWeekly(readyV)); out.push('</ul>');
+  out.push('<p><b>In Production</b></p>');
+  out.push('<p><i>Statics:</i></p><ul>'); out.push(renderBatchListWeekly(prodS)); out.push('</ul>');
+  out.push('<p><i>Videos:</i></p><ul>');  out.push(renderBatchListWeekly(prodV)); out.push('</ul>');
   return out.join('\n');
 }
 
@@ -554,8 +570,6 @@ const DASHBOARD_URLS = {
 function buildClientSectionWeekly(clientName, records) {
   const pipelineRecs = records.filter(r => isPipelineStatus(r) && !isLaunched(r));
   const parts = [`<p><b>${escapeHtml(clientName)}</b></p>`];
-  const dashUrl = DASHBOARD_URLS[clientName];
-  parts.push(`<p><i>Creative Dashboard:</i>${dashUrl ? ` <a href="${dashUrl}">${escapeHtml(dashUrl)}</a>` : ''}</p>`);
   if (clientName === 'VAM') {
     parts.push(renderFunnel('VAM Funnel', pipelineRecs.filter(r => !isNsr(r))));
     parts.push(renderFunnel('NSR Funnel', pipelineRecs.filter(isNsr)));
@@ -570,7 +584,6 @@ function buildClientSectionWeekly(clientName, records) {
   } else {
     parts.push(renderFunnel('', pipelineRecs));
   }
-  parts.push('<p><i>Notes</i></p>\n<ul>\n  <li></li>\n</ul>');
   return parts.join('\n');
 }
 
@@ -601,7 +614,7 @@ export function buildWeeklyUpdatesHtml(workbooksWithNames, now) {
   }
 
   const body = sections.length ? sections.join('\n<hr>\n') : '<p><em>No trackers uploaded.</em></p>';
-  const summaryWidget = renderSummaryWidget(summaries);
+  const summaryWidget = renderSummaryWidget(summaries, todayDisp);
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <title>Weekly Creative Updates — ${todayDisp}</title>
@@ -690,14 +703,20 @@ ${stageBullets(counts.production)}`;
 // form (no table) so it pastes cleanly into Google Docs.
 const SUMMARY_WIDGET_STYLE = `.pipeline-summary { margin-top: 8px; }
 .pipeline-summary h2 { font-size: 14pt; margin-bottom: 2px; }
+.pipeline-summary h3 { font-size: 12pt; margin: 14px 0 2px; }
 .pipeline-summary .headline { margin: 6px 0 14px; }
 .pipeline-summary .headline b { font-size: 12pt; }
 .pipeline-summary ul { margin: 2px 0 10px 0; }
 .pipeline-summary li { margin: 2px 0; }`;
 
+// TCC pipeline is tracked in a dedicated Google Sheet rather than the tracker,
+// so its summary entry links to that sheet instead of showing batch counts.
+const TCC_PIPELINE_SHEET = 'https://docs.google.com/spreadsheets/d/1a0a5HyeTO18IGtvBvvy-Bk25pNAIvHl9pP3psO6qfOk/edit?gid=0#gid=0';
+
 // Inner HTML for the pipeline summary widget (no page wrapper). `entries`
-// is a flat array of { label, counts } from summarizeWorkbook().
-function renderSummaryWidget(entries) {
+// is a flat array of { client, sub, counts } from summarizeWorkbook();
+// `dateDisp` is the report date rendered as the section's H2 heading.
+function renderSummaryWidget(entries, dateDisp) {
   if (!entries.length) return '';
 
   const zero = () => ({ batches: 0, ads: 0 });
@@ -732,18 +751,22 @@ function renderSummaryWidget(entries) {
 
   const body = groups.map(g => {
     const dashUrl = DASHBOARD_URLS[g.client];
-    const parts = [`<p><b>${escapeHtml(g.client)}</b></p>`];
+    const parts = [`<h3>${escapeHtml(g.client)}</h3>`];
     parts.push(`<p><i>Creative Dashboard:</i>${dashUrl ? ` <a href="${dashUrl}">${escapeHtml(dashUrl)}</a>` : ''}</p>`);
-    for (const s of g.subs) {
-      if (s.sub) parts.push(`<p><b>${escapeHtml(s.sub)}</b></p>`);
-      parts.push(summaryStage(s.counts));
+    if (g.client === 'TCC') {
+      parts.push(`<p><i>Ready to launch &amp; In Production:</i> <a href="${TCC_PIPELINE_SHEET}">${escapeHtml(TCC_PIPELINE_SHEET)}</a></p>`);
+    } else {
+      for (const s of g.subs) {
+        if (s.sub) parts.push(`<p><b>${escapeHtml(s.sub)}</b></p>`);
+        parts.push(summaryStage(s.counts));
+      }
     }
     parts.push('<p><i>Notes</i></p>\n<ul>\n  <li></li>\n</ul>');
     return parts.join('\n');
   }).join('\n');
 
   return `<div class="pipeline-summary">
-<h2>Pipeline Summary</h2>
+<h2>${escapeHtml(dateDisp || 'Pipeline Summary')}</h2>
 <p class="headline"><b>${totalReadyBatches} batch${totalReadyBatches === 1 ? '' : 'es'} ready to launch</b> (${totalReadyAds} ad${totalReadyAds === 1 ? '' : 's'}) · ${totalProdBatches} batch${totalProdBatches === 1 ? '' : 'es'} still in production</p>
 ${body}
 <p style="color:#888;font-size:9.5pt;margin-top:6px">Counts use the same batch grouping as the pipelines above (batches, with total ad variations).</p>
