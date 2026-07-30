@@ -275,13 +275,25 @@ function renderBatches(batches, includeFolders) {
   if (!batches || batches.size === 0) return '<li><em>(none currently)</em></li>';
   const out = [];
   let i = 1;
+  const isUrl = (t) => /^https?:\/\//i.test(String(t || '').trim());
   for (const b of batches.values()) {
     const label = escapeHtml(b.label);
-    const heading = b.url
-      ? `<strong>Batch ${i} — <a href="${escapeHtml(b.url)}">${label}</a></strong>`
-      : `<strong>Batch ${i} — ${label}</strong>`;
-    if (includeFolders && b.folders.length) {
-      const folderLis = b.folders.map(([t, u]) =>
+    // Some clients (CEO Lawyer) paste a raw per-variation URL into the Folder
+    // Link cell, so listing every folder spills a stack of identical-looking
+    // raw links under one batch. Collapse those URL-valued folders into a
+    // single "(N variations)" count linking to the Request Doc (or the first
+    // link); human-named folders still list out individually as before.
+    const urlFolders = b.folders.filter(([t]) => isUrl(t));
+    const namedFolders = b.folders.filter(([t]) => !isUrl(t));
+    const countSuffix = urlFolders.length
+      ? ` (${urlFolders.length} variation${urlFolders.length > 1 ? 's' : ''})`
+      : '';
+    const headLink = b.url || (urlFolders[0] && urlFolders[0][1]) || null;
+    const heading = headLink
+      ? `<strong>Batch ${i} — <a href="${escapeHtml(headLink)}">${label}</a>${countSuffix}</strong>`
+      : `<strong>Batch ${i} — ${label}${countSuffix}</strong>`;
+    if (includeFolders && namedFolders.length) {
+      const folderLis = namedFolders.map(([t, u]) =>
         `<li>📁 <a href="${escapeHtml(u)}">${escapeHtml(t)}</a></li>`
       ).join('');
       out.push(`<li>${heading}<ul>${folderLis}</ul></li>`);
