@@ -75,6 +75,14 @@
       }
     },
     {
+      "id": "build-remote",
+      "name": "Build Remote",
+      "tracker_url": "https://docs.google.com/spreadsheets/d/1FaXyatQME6tMMOXiwQ83c8UzGQFvgH10TnTLelu1Ujc/edit?gid=958865688#gid=958865688",
+      "defaults": {
+        "Ad Platform": "Meta"
+      }
+    },
+    {
       "id": "trusy",
       "name": "Trusy",
       "tracker_url": "https://docs.google.com/spreadsheets/d/1hRxkYZ6VKlZItBimLeAJ8iLtSoIjokyCetqxMh6xil0/edit?gid=958865688#gid=958865688",

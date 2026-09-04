@@ -174,6 +174,7 @@ export function detectClientName(filename) {
   const n = base.toUpperCase();
   if (n.includes('CEO LAWYER')) return 'CEO Lawyer';
   if (n.includes('NURSE COACH')) return 'Nurse Coach';
+  if (n.includes('BUILD REMOTE') || /\bBRV\b/.test(n)) return 'Build Remote';
   if (n.includes('VALUE ADDED MOVING') || /\bVAM\b/.test(n)) return 'VAM';
   if (n.includes('CASE SOURCE')) return 'Case Source';
   if (n.includes('DAN HENRY')) return 'Dan Henry';

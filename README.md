@@ -83,6 +83,14 @@ Edit `clients.json`:
 
 `defaults` keys must match the field names in the brief (e.g. `Landing Page URL`, `Copywriter`, `Avatar`, etc.). Defaults pre-fill empty form fields when the client is selected; user-entered values are never overwritten.
 
+For the PM tool, `id`, `name`, and `defaults` are enough to make a client available in the client picker and Ad Categorizer. Add these optional fields when they are available:
+
+- `tracker_url` — enables the one-click **Open Tracker** button.
+- `creative_folder_url` — pre-fills the tracker Folder Link.
+- `tracker_overrides` — handles a client's nonstandard tracker columns.
+
+If the client's tracker filenames use a shortened or alternate name, add that alias to `detectClientName()` in `pm/lib/tracker-pipeline.js` so Meeting Notes and Weekly Creative Updates label it consistently. A Creative Dashboard URL and Strategist KPI thresholds are separate, optional integrations.
+
 In-browser additions (the **+ Add client** button) are saved to localStorage on the user's machine only — for permanent additions across users, edit `clients.json`.
 
 ## Updating templates
